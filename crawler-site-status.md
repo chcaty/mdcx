@@ -10,7 +10,10 @@
 - Removed AVSOX from the default censored, uncensored, and FC2 site sets.
 - Added an XCITY detail-page number guard so unrelated search results fail instead of being saved.
 - Updated the iQQTV default domain to `iqqk4.quest` and JavDay to `javday.app`.
-- Existing user-selected site lists are preserved; users can still opt in manually.
+- Existing configurations now remove AVSOX, CableAV, and XCITY from site priorities and migrate old iQQTV/JavDay domains.
+- Crawler inputs are copied per site so short-number handling cannot leak into later crawlers.
+- Fixed domestic-site field migration, Pydantic 2.13 schema conversion, and Windows cross-drive path checks.
+- XCITY now rejects missing or mismatched detail-page numbers, including explicit URL scraping.
 
 
 

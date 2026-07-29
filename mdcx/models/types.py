@@ -141,7 +141,6 @@ class CrawlerInput:
         return replace(self)
 
 
-
 @dataclass
 class CrawlTask(CrawlerInput):
     """刮削一个文件所需的信息"""

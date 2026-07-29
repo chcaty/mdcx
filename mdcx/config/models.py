@@ -731,6 +731,33 @@ class Config(BaseModel):
         """
         处理字段变更.
         """
+        changes: list[str] = []
+        disabled_sites = {Website.AVSOX, Website.CABLEAV, Website.XCITY}
+        site_list_fields = (
+            "website_youma",
+            "website_wuma",
+            "website_suren",
+            "website_fc2",
+            "website_oumei",
+            "website_guochan",
+        )
+        for field_name in site_list_fields:
+            if field_name not in d:
+                continue
+            sites = Config.parse_sites(d[field_name])
+            filtered_sites = [site for site in sites if site not in disabled_sites]
+            if len(filtered_sites) != len(sites):
+                d[field_name] = filtered_sites
+                changes.append(f"Removed disabled crawlers from {field_name}")
+
+        if "website_single" in d:
+            try:
+                if Website(d["website_single"]) in disabled_sites:
+                    d["website_single"] = Website.AIRAV_CC
+                    changes.append("Replaced disabled single-site crawler with airav_cc")
+            except ValueError:
+                pass
+
         if "proxy_type" in d:
             d["use_proxy"] = d["proxy_type"] != "no"
         if isinstance(r := d.get("proxy"), str):
@@ -743,16 +770,47 @@ class Config(BaseModel):
             d["use_database"] = bool(r)
         if isinstance(r := d.get("local_library"), str):
             d["local_library"] = str_to_list(r, ",")
-        if "site_configs" not in d:
-            d["site_configs"] = {Website.DMM: SiteConfig(use_browser=True)}
-        elif Website.DMM not in d["site_configs"]:
-            d["site_configs"][Website.DMM] = SiteConfig(use_browser=True)
+        site_configs = d.get("site_configs")
+        if not isinstance(site_configs, dict):
+            site_configs = {}
+            d["site_configs"] = site_configs
+        if Website.DMM not in site_configs and Website.DMM.value not in site_configs:
+            site_configs[Website.DMM] = SiteConfig(use_browser=True)
+
+        url_migrations = {
+            Website.IQQTV: ("https://iqq5.xyz", "https://iqqk4.quest"),
+            Website.JAVDAY: ("https://javday.tv", "https://javday.app"),
+        }
+        for site, (old_url, new_url) in url_migrations.items():
+            site_config = site_configs.get(site)
+            if site_config is None:
+                site_config = site_configs.get(site.value)
+            if isinstance(site_config, SiteConfig):
+                current_url = str(site_config.custom_url or "").rstrip("/")
+                if current_url == old_url:
+                    site_config.custom_url = HttpUrl(new_url)
+                    changes.append(f"Updated the default URL for {site.value}")
+            elif isinstance(site_config, dict):
+                current_url = str(site_config.get("custom_url") or "").rstrip("/")
+                if current_url == old_url:
+                    site_config["custom_url"] = new_url
+                    changes.append(f"Updated the default URL for {site.value}")
 
         # 处理旧版字段设置
         if "field_configs" not in d:
             Config._convert_field_configs(d)
 
-        return []
+        field_configs = d.get("field_configs", {})
+        if isinstance(field_configs, dict):
+            for field_config in field_configs.values():
+                if isinstance(field_config, FieldConfig):
+                    sites = field_config.site_prority
+                    field_config.site_prority = [site for site in sites if site not in disabled_sites]
+                elif isinstance(field_config, dict) and "site_prority" in field_config:
+                    sites = Config.parse_sites(field_config["site_prority"])
+                    field_config["site_prority"] = [site for site in sites if site not in disabled_sites]
+
+        return changes
 
     @staticmethod
     def _convert_field_configs(d):
@@ -767,7 +825,7 @@ class Config(BaseModel):
         website_suren = Config.parse_sites(d.get("website_suren", []))
         website_fc2 = Config.parse_sites(d.get("website_fc2", []))
         website_oumei = Config.parse_sites(d.get("website_oumei", []))
-        website_guochan = Config.parse_sites(d.get("website_youma", []))
+        website_guochan = Config.parse_sites(d.get("website_guochan", []))
         all_enabled_sites = list(
             dict.fromkeys(website_youma + website_wuma + website_suren + website_fc2 + website_oumei + website_guochan)
         )
@@ -850,7 +908,7 @@ class Config(BaseModel):
             for name, info in model_fields.items():
                 assert info.annotation is not None, f"Field {name} has no annotation"
                 # 处理嵌套
-                if issubclass(info.annotation, BaseModel):
+                if isinstance(info.annotation, type) and issubclass(info.annotation, BaseModel):
                     sub_dict = handle_dict(info.annotation.model_fields, data)
                     data[name] = sub_dict
                     continue
