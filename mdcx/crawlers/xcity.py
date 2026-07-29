@@ -6,6 +6,7 @@ from lxml import etree
 
 from ..config.manager import manager
 from ..models.log_buffer import LogBuffer
+from ..number import resolve_scraped_number
 
 
 def getTitle(html):
@@ -16,7 +17,7 @@ def getTitle(html):
 
 def getWebNumber(html, number):
     result = html.xpath('//span[@id="hinban"]/text()')
-    return result[0] if result else number
+    return result[0] if result else ""
 
 
 def getActor(html):
@@ -185,6 +186,7 @@ async def main(
                 LogBuffer.info().write(web_info + debug_info)
                 raise Exception(debug_info)
             web_number = getWebNumber(html_info, number)  # 获取番号，用来替换标题里的番号
+            web_number = resolve_scraped_number(number, web_number)
             title = title.replace(f" {web_number}", "").strip()
             actor = getActor(html_info)  # 获取actor
             actor_photo = getActorPhoto(actor)
@@ -203,7 +205,7 @@ async def main(
             series = getSeries(html_info)
             try:
                 dic = {
-                    "number": number,
+                    "number": web_number,
                     "title": title,
                     "originaltitle": title,
                     "actor": actor,

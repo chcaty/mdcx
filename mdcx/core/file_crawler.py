@@ -122,18 +122,15 @@ class FileScraper:
             asyncio.TimeoutError: 如果请求超时
             Exception: 爬虫函数抛出的异常
         """
-        short_number = task_input.short_number
 
         # 259LUXU-1111， mgstage 和 avsex 之外使用 LUXU-1111（素人番号时，short_number有值，不带前缀数字；反之，short_number为空)
-        if short_number and website != "mgstage" and website != "avsex":
-            task_input.number = short_number
 
         c = await self.crawler_provider.get(website)
 
         # 对爬虫函数调用添加超时限制, 超时异常由调用者处理
         if os.getenv("DEBUG"):
             timeout = None
-        r = await asyncio.wait_for(c.run(task_input), timeout=timeout)
+        r = await asyncio.wait_for(c.run(task_input.for_site(website)), timeout=timeout)
         return r
 
     async def _call_crawlers(self, task_input: CrawlerInput, type_sites: set[Website]) -> CrawlersResult | None:

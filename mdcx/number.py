@@ -5,6 +5,18 @@ import unicodedata
 
 from .manual import ManualConfig
 
+def normalize_number(number: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", number.upper())
+
+def resolve_scraped_number(expected: str, scraped: str) -> str:
+    if not scraped:
+        raise ValueError("Detail page did not provide a number")
+    if expected and normalize_number(expected) != normalize_number(scraped):
+        raise ValueError(f"Number mismatch: requested {expected}, page returned {scraped}")
+    return scraped
+
+
+
 
 def is_uncensored(number: str) -> bool:
     if re.match(r"n\d{4}", number) or re.search(r"[^.]+\.\d{2}\.\d{2}\.\d{2}", number):

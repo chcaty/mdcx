@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
@@ -134,6 +134,12 @@ class CrawlerInput:
     @classmethod
     def empty(cls) -> "CrawlerInput":
         return FileInfo.empty().crawler_input()
+
+    def for_site(self, website: Website) -> "CrawlerInput":
+        if self.short_number and website not in (Website.MGSTAGE, Website.AVSEX):
+            return replace(self, number=self.short_number)
+        return replace(self)
+
 
 
 @dataclass

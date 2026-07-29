@@ -1972,7 +1972,7 @@ class MyMAinWindow(QMainWindow):
             net_info = {
                 "github": ["https://raw.githubusercontent.com", ""],
                 "airav_cc": ["https://airav.io", ""],
-                "iqqtv": ["https://iqq5.xyz", ""],
+                "iqqtv": ["https://iqqk4.quest", ""],
                 "avsex": ["https://paycalling.com", ""],
                 "freejavbt": ["https://freejavbt.com", ""],
                 "javbus": ["https://www.javbus.com", ""],
