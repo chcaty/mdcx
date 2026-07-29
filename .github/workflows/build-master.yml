@@ -1,0 +1,51 @@
+name: Build master artifact
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-master-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Build Windows executable
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          activate-environment: true
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: Build executable
+        env:
+          PYTHONIOENCODING: utf-8
+        run: uv run scripts/build.py --no-color
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: MDCx-windows-x86_64-${{ github.sha }}
+          path: dist/MDCx.exe
+          if-no-files-found: error
+          retention-days: 14
