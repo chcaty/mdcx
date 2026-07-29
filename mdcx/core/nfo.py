@@ -19,6 +19,7 @@ from ..signals import signal
 from ..utils import get_used_time
 from ..utils.file import delete_file_async
 from ..utils.language import is_japanese
+from ..utils.xml import escape_cdata, escape_xml_text
 from .utils import render_name_template
 
 
@@ -44,27 +45,7 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
     else:
         nfo_title_template = manager.config.naming_media
 
-    # 字符转义，避免emby无法解析
-    rep_word = {
-        "&amp;": "&",
-        "&lt;": "<",
-        "&gt;": ">",
-        "&apos;": "'",
-        "&quot;": '"',
-        "&lsquo;": "「",
-        "&rsquo;": "」",
-        "&hellip;": "…",
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        "'": "&apos;",
-        '"': "&quot;",
-    }
-
-    def rep(raw: str) -> str:
-        for key, value in rep_word.items():
-            raw = raw.replace(key, value)
-        return raw
+    rep = escape_xml_text
 
     originalplot = rep(data.originalplot)
     originaltitle = rep(data.originaltitle)
@@ -88,6 +69,7 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
         show_moword,
         should_escape_result,
     )
+    nfo_title = rep(nfo_title)
 
     # 获取字段
     nfo_include_new = manager.config.nfo_include_new
@@ -130,9 +112,9 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
                     print(f"  <outline>{temp_outline}</outline>", file=code)
             else:
                 if NfoInclude.PLOT_ in nfo_include_new:
-                    print("  <plot><![CDATA[" + outline + "]]></plot>", file=code)
+                    print("  <plot><![CDATA[" + escape_cdata(outline) + "]]></plot>", file=code)
                 if NfoInclude.OUTLINE in nfo_include_new:
-                    print("  <outline><![CDATA[" + outline + "]]></outline>", file=code)
+                    print("  <outline><![CDATA[" + escape_cdata(outline) + "]]></outline>", file=code)
 
         # 输出日文剧情简介
         if originalplot and NfoInclude.ORIGINALPLOT in nfo_include_new:
@@ -141,11 +123,11 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
                 temp_originalplot = originalplot.replace("<br>", "")
                 print(f"  <originalplot>{temp_originalplot}</originalplot>", file=code)
             else:
-                print("  <originalplot><![CDATA[" + originalplot + "]]></originalplot>", file=code)
+                print("  <originalplot><![CDATA[" + escape_cdata(originalplot) + "]]></originalplot>", file=code)
 
         # 输出发行日期
         if release:
-            nfo_tagline = manager.config.nfo_tagline.replace("release", release)
+            nfo_tagline = rep(manager.config.nfo_tagline.replace("release", release))
             if nfo_tagline:
                 print("  <tagline>" + nfo_tagline + "</tagline>", file=code)
             if NfoInclude.PREMIERED in nfo_include_new:
@@ -199,6 +181,7 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
         # 输出国家
         if NfoInclude.COUNTRY in nfo_include_new:
             print(f"  <countrycode>{country}</countrycode>", file=code)
+            print(f"  <country>{country}</country>", file=code)
 
         # 输出男女演员
         if NfoInclude.ACTOR_ALL in nfo_include_new:
@@ -211,14 +194,14 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
                 actors = [manager.config.actor_no_name]
             for name in actors:
                 print("  <actor>", file=code)
-                print("    <name>" + name + "</name>", file=code)
+                print("    <name>" + rep(name) + "</name>", file=code)
                 print("    <type>Actor</type>", file=code)
                 print("  </actor>", file=code)
 
         # 输出导演
         if NfoInclude.DIRECTOR in nfo_include_new:
             for name in directors:
-                print("  <director>" + name + "</director>", file=code)
+                print("  <director>" + rep(name) + "</director>", file=code)
 
         # 输出公众评分、影评人评分
         try:
@@ -250,7 +233,7 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
         if NfoInclude.ACTOR_SET in nfo_include_new:
             for name in data.actors:
                 print("  <set>", file=code)
-                print("    <name>" + name + "</name>", file=code)
+                print("    <name>" + rep(name) + "</name>", file=code)
                 print("  </set>", file=code)
 
         # 输出合集(使用系列)
@@ -281,30 +264,32 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
         if NfoInclude.TAG in nfo_include_new:
             for t in tags:
                 if t:
-                    print("  <tag>" + t + "</tag>", file=code)
+                    print("  <tag>" + rep(t) + "</tag>", file=code)
 
         # 输出 genre
         if NfoInclude.GENRE in nfo_include_new:
             for t in tags:
                 if t:
-                    print("  <genre>" + t + "</genre>", file=code)
+                    print("  <genre>" + rep(t) + "</genre>", file=code)
 
         # 输出封面地址
         if poster and NfoInclude.POSTER in nfo_include_new:
-            print("  <poster>" + poster + "</poster>", file=code)
+            print("  <poster>" + rep(poster) + "</poster>", file=code)
 
         # 输出背景地址
         if cover and NfoInclude.COVER in nfo_include_new:
-            print("  <cover>" + cover + "</cover>", file=code)
+            print("  <cover>" + rep(cover) + "</cover>", file=code)
 
         # 输出预告片
         if trailer and NfoInclude.TRAILER in nfo_include_new:
-            print("  <trailer>" + trailer + "</trailer>", file=code)
+            print("  <trailer>" + rep(trailer) + "</trailer>", file=code)
 
         # external id
         for site, u in data.external_ids.items():
             if u:
-                print(f"  <{site}id>{u}</{site}id>", file=code)
+                safe_id = rep(str(u))
+                print(f"  <{site}id>{safe_id}</{site}id>", file=code)
+                print(f'  <uniqueid type="{site.value}">{safe_id}</uniqueid>', file=code)
         # 没有时使用搜索关键词填充 javdbsearchid # todo 允许配置其他网站的后备字段, 允许控制是否输出该字段
         if not data.external_ids.get(Website.JAVDB):
             print(f"  <javdbsearchid>{number}</javdbsearchid>", file=code)

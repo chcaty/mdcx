@@ -85,8 +85,10 @@ async def creat_folder(
             other.poster_path = poster_new_path_with_filename
         return True
     else:
-        json_data.title = "成功文件夹已存在同名文件!"
-        LogBuffer.error().write(f"成功文件夹已存在同名文件! \n ❗️ 当前文件: {file_path} \n ❗️ 已存在: {file_new_path} ")
+        json_data.title = "目标文件已存在，未覆盖"
+        LogBuffer.error().write(
+            f"元数据刮削成功，但文件整理失败：目标文件已存在。\n ❗️ 当前文件: {file_path}\n ❗️ 已存在: {file_new_path} "
+        )
         return False
 
 
