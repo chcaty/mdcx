@@ -11,6 +11,7 @@ from .v1 import ConfigV1, load_v1
 
 class ConfigManager:
     def __init__(self):
+        self.last_migrations: list[str] = []
         if not MARK_FILE.is_file():  # 标记文件不存在
             self.path = MAIN_PATH / "config.json"  # 默认配置文件路径
         else:
@@ -34,14 +35,15 @@ class ConfigManager:
         self._path = p
 
     def load(self) -> list[str]:
+        self.last_migrations = []
         if self._path.suffix == ".ini":  # handle v1 config
             return self.handle_v1()
         try:
             d = json.loads(self._path.read_text(encoding="UTF-8"))
-            errors = Config.update(d)
+            self.last_migrations = Config.update(d)
             self.config = Config.model_validate(d)
             self.computed = Computed(self.config)
-            return errors
+            return []
         except Exception as e:
             self.config = Config()
             self.computed = Computed(self.config)

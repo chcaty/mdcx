@@ -12,6 +12,9 @@ on:
         description: "Tag"
         required: true
 
+permissions:
+  contents: write
+
 jobs:
   init-matrix:
     runs-on: ubuntu-latest
@@ -96,19 +99,23 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         if: ${{ matrix.build == 'macos' }}
         with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           overwrite: true
           asset_name: MDCx-$tag-${{ matrix.build }}-${{ matrix.arch }}${{ matrix.tail }}-${{ github.sha }}.dmg
           file: dist/MDCx.dmg
           prerelease: ${{ !startsWith(github.event.inputs.tag || github.ref_name, '220') }}
           body: ${{ steps.get-changelog.outputs.CHANGELOG }}
           tag: ${{ github.event.inputs.tag || github.ref }}
+          target_commit: ${{ github.sha }}
 
       - name: Create Release - Windows
         uses: svenstaro/upload-release-action@v2
         if: ${{ matrix.build == 'windows' }}
         with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           overwrite: true
           asset_name: MDCx-$tag-${{ matrix.build }}-${{ matrix.arch }}${{ matrix.tail }}-${{ github.sha }}.exe
           file: dist/MDCx.exe
           prerelease: ${{ !startsWith(github.event.inputs.tag || github.ref_name, '220') }}
           tag: ${{ github.event.inputs.tag || github.ref }}
+          target_commit: ${{ github.sha }}

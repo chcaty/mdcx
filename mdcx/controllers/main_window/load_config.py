@@ -67,6 +67,8 @@ def load_config(self: "MyMAinWindow"):
     }
 
     errors = manager.load()
+    if manager.last_migrations:
+        signal_qt.show_log_text(f"\n\t配置已兼容迁移：{'；'.join(manager.last_migrations)}\n\n")
     v1_msgs = [e for e in errors if e.startswith("[V1]")]
     if v1_msgs:
         signal_qt.show_log_text(f"\n\t{'\n\t'.join(v1_msgs)}\n\n")

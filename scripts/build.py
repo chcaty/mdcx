@@ -115,7 +115,9 @@ class BuildManager:
         """生成.spec文件"""
         logger.info("生成 .spec 文件...")
         cmd = [
-            "pyi-makespec",
+            sys.executable,
+            "-m",
+            "PyInstaller.utils.cliutils.makespec",
             "--name",
             self.app_name,
             "--noupx",
@@ -180,7 +182,7 @@ class BuildManager:
         logger.info("开始构建应用...")
         build_start = time.time()
 
-        cmd = ["pyinstaller", f"{self.app_name}.spec", "-y"]
+        cmd = [sys.executable, "-m", "PyInstaller", f"{self.app_name}.spec", "-y"]
         self._run_command(cmd, error_msg="pyinstaller 构建失败")
         build_duration = time.time() - build_start
 
