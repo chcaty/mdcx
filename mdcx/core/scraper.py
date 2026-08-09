@@ -726,7 +726,8 @@ class Scraper:
             await copy_trailer_to_theme_videos(folder_new_path, naming_rule)
 
         # 生成nfo文件
-        await write_nfo(file_info, res, nfo_new_path, folder_new_path, update_nfo)
+        if not await write_nfo(file_info, res, nfo_new_path, folder_new_path, update_nfo):
+            return None, None
 
         # 移动字幕、种子、bif、trailer、其他文件
         if file_info.has_sub:

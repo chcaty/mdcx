@@ -1,6 +1,6 @@
 from xml.etree import ElementTree
 
-from mdcx.utils.xml import escape_cdata, escape_xml_text
+from mdcx.utils.xml import escape_cdata, escape_xml_text, is_valid_xml_element_name
 
 
 def test_xml_text_is_not_double_escaped():
@@ -19,3 +19,9 @@ def test_cdata_preserves_text_and_handles_cdata_terminator():
 
 def test_jellyfin_country_tag_name():
     assert ElementTree.fromstring("<movie><country>JP</country></movie>").findtext("country") == "JP"
+
+
+def test_provider_id_xml_element_name_validation():
+    assert is_valid_xml_element_name("dmmid")
+    assert is_valid_xml_element_name("javdbid")
+    assert not is_valid_xml_element_name("7mmtvid")

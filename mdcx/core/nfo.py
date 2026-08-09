@@ -19,7 +19,7 @@ from ..signals import signal
 from ..utils import get_used_time
 from ..utils.file import delete_file_async
 from ..utils.language import is_japanese
-from ..utils.xml import escape_cdata, escape_xml_text
+from ..utils.xml import escape_cdata, escape_xml_text, is_valid_xml_element_name
 from .utils import render_name_template
 
 
@@ -87,7 +87,6 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
     try:
         if not await aiofiles.os.path.exists(output_dir):
             await aiofiles.os.makedirs(output_dir)
-        await delete_file_async(nfo_file)  # 避免115出现重复文件
 
         code = StringIO()
         print('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>', file=code)
@@ -288,7 +287,9 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
         for site, u in data.external_ids.items():
             if u:
                 safe_id = rep(str(u))
-                print(f"  <{site}id>{safe_id}</{site}id>", file=code)
+                provider_tag = f"{site.value}id"
+                if is_valid_xml_element_name(provider_tag):
+                    print(f"  <{provider_tag}>{safe_id}</{provider_tag}>", file=code)
                 print(f'  <uniqueid type="{site.value}">{safe_id}</uniqueid>', file=code)
         # 没有时使用搜索关键词填充 javdbsearchid # todo 允许配置其他网站的后备字段, 允许控制是否输出该字段
         if not data.external_ids.get(Website.JAVDB):
@@ -296,8 +297,11 @@ async def write_nfo(file_info: FileInfo, data: CrawlersResult, nfo_file: Path, o
 
         print("</movie>", file=code)
 
+        nfo_content = code.getvalue()
+        etree.fromstring(nfo_content.encode("UTF-8"))
+        await delete_file_async(nfo_file)  # 避免115出现重复文件
         async with aiofiles.open(nfo_file, "w", encoding="UTF-8") as f:
-            await f.write(code.getvalue())
+            await f.write(nfo_content)
             LogBuffer.log().write(f"\n 🍀 Nfo done! (new)({get_used_time(start_time)}s)")
             return True
 

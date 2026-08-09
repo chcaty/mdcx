@@ -52,6 +52,7 @@ from mdcx.tools.actress_db import ActressDB
 from mdcx.tools.emby_actor_image import update_emby_actor_photo
 from mdcx.tools.emby_actor_info import creat_kodi_actors, show_emby_actor_list, update_emby_actor_info
 from mdcx.tools.missing import check_missing_number
+from mdcx.tools.nfo_audit import audit_nfo_file, repair_nfo_file
 from mdcx.tools.subtitle import add_sub_for_all_video
 from mdcx.utils import _async_raise, add_html, executor, get_current_time, get_used_time, kill_a_thread, split_path
 from mdcx.utils.file import delete_file_sync, open_file_thread
@@ -200,6 +201,7 @@ class MyMAinWindow(QMainWindow):
         self.menu_del_folder = QAction(QIcon(resources.del_folder_icon), "  删除文件和文件夹\tA", self)
         self.menu_folder = QAction(QIcon(resources.open_folder_icon), "  打开文件夹\tF", self)
         self.menu_nfo = QAction(QIcon(resources.open_nfo_icon), "  编辑 NFO\tE", self)
+        self.menu_check_nfo = QAction(QIcon(resources.open_nfo_icon), "  校对 NFO\tCtrl+Shift+N", self)
         self.menu_play = QAction(QIcon(resources.play_icon), "  播放\tP", self)
         self.menu_hide = QAction(QIcon(resources.hide_boss_icon), "  隐藏\tQ", self)
 
@@ -211,6 +213,7 @@ class MyMAinWindow(QMainWindow):
         self.menu_del_folder.triggered.connect(self.main_del_folder_click)
         self.menu_folder.triggered.connect(self.main_open_folder_click)
         self.menu_nfo.triggered.connect(self.main_open_nfo_click)
+        self.menu_check_nfo.triggered.connect(self.check_nfo_click)
         self.menu_play.triggered.connect(self.main_play_click)
         self.menu_hide.triggered.connect(self.hide)
 
@@ -220,6 +223,7 @@ class MyMAinWindow(QMainWindow):
         QShortcut(QKeySequence(self.tr("A")), self, self.main_del_folder_click)
         QShortcut(QKeySequence(self.tr("F")), self, self.main_open_folder_click)
         QShortcut(QKeySequence(self.tr("E")), self, self.main_open_nfo_click)
+        QShortcut(QKeySequence(self.tr("Ctrl+Shift+N")), self, self.check_nfo_click)
         QShortcut(QKeySequence(self.tr("P")), self, self.main_play_click)
         QShortcut(QKeySequence(self.tr("S")), self, self.pushButton_start_scrape_clicked)
         QShortcut(QKeySequence(self.tr("Q")), self, self.hide)
@@ -254,6 +258,7 @@ class MyMAinWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(self.menu_folder)
         menu.addAction(self.menu_nfo)
+        menu.addAction(self.menu_check_nfo)
         menu.addAction(self.menu_play)
         menu.addAction(self.menu_hide)
         menu.exec_(self.Ui.page_main.mapToGlobal(pos))
@@ -973,6 +978,53 @@ class MyMAinWindow(QMainWindow):
         if self._check_main_file_path():
             self.Ui.widget_nfo.show()
             self._show_nfo_info()
+
+    def check_nfo_click(self):
+        """校对当前影片的 NFO，或让用户选择一个 NFO 文件。"""
+        nfo_path = self.file_main_open_path
+        if nfo_path and nfo_path != Path() and nfo_path.suffix.lower() != ".nfo":
+            nfo_path = nfo_path.with_suffix(".nfo")
+        if not nfo_path or not nfo_path.is_file():
+            start_dir = str(self.file_main_open_path.parent) if self.file_main_open_path != Path() else ""
+            selected, _ = QFileDialog.getOpenFileName(self, "选择要校对的 NFO", start_dir, "NFO 文件 (*.nfo)")
+            if not selected:
+                return
+            nfo_path = Path(selected)
+
+        result = audit_nfo_file(nfo_path)
+        if not result.issues:
+            QMessageBox.information(self, "NFO 校对", f"校对通过：\n{nfo_path}")
+            return
+
+        severity_names = {"error": "错误", "warning": "提醒"}
+        details = "\n".join(
+            f"[{severity_names.get(issue.severity, issue.severity)}] {issue.message}" for issue in result.issues
+        )
+        if not result.fixable:
+            QMessageBox.warning(self, "NFO 校对结果", f"文件：{nfo_path}\n\n{details}\n\n没有可安全自动修复的问题。")
+            return
+
+        box = QMessageBox(QMessageBox.Warning, "NFO 校对结果", f"文件：{nfo_path}\n\n{details}\n\n是否自动修复？")
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.button(QMessageBox.Yes).setText("备份并修复")
+        box.button(QMessageBox.No).setText("仅查看")
+        box.setDefaultButton(QMessageBox.No)
+        if box.exec_() != QMessageBox.Yes:
+            return
+
+        try:
+            repaired_result, repairs, backup = repair_nfo_file(nfo_path)
+        except OSError as error:
+            QMessageBox.critical(self, "NFO 修复失败", str(error))
+            return
+        repair_text = "\n".join(f"- {repair}" for repair in repairs)
+        remaining = "\n".join(f"- {issue.message}" for issue in repaired_result.issues)
+        message = f"修复完成。\n\n{repair_text}"
+        if backup:
+            message += f"\n\n备份：{backup}"
+        if remaining:
+            message += f"\n\n仍需人工确认：\n{remaining}"
+        QMessageBox.information(self, "NFO 修复完成", message)
 
     def main_open_right_menu(self):
         """

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import asyncio
 import re
 import time
+from urllib.parse import urljoin
 
 from lxml import etree
 
@@ -8,48 +10,119 @@ from ..config.enums import Website
 from ..config.manager import manager
 from ..models.log_buffer import LogBuffer
 
+_JAVBUS_REQUEST_INTERVAL = 0.5
+_javbus_request_lock = asyncio.Lock()
+_javbus_next_request = 0.0
+_CODE_REWRITES = {
+    "GANA": "200GANA",
+    "MIUM": "300MIUM",
+    "LUXU": "259LUXU",
+}
+
+
+def rewrite_lookup_number(number: str) -> tuple[str, tuple[str, str] | None]:
+    number = number.strip()
+    upper = number.upper()
+    for input_prefix, request_prefix in _CODE_REWRITES.items():
+        if re.match(rf"^{input_prefix}(?=[\-_ ]?\d)", upper):
+            return request_prefix + number[len(input_prefix) :], (input_prefix, request_prefix)
+    return number, None
+
+
+def restore_lookup_number(value: str, rewrite: tuple[str, str] | None) -> str:
+    value = value.strip()
+    if rewrite is None:
+        return value
+    input_prefix, request_prefix = rewrite
+    if value.upper().startswith(request_prefix):
+        return input_prefix + value[len(request_prefix) :]
+    return value
+
+
+async def get_text_rate_limited(url: str, headers: dict[str, str]):
+    global _javbus_next_request
+    async with _javbus_request_lock:
+        loop = asyncio.get_running_loop()
+        wait = _javbus_next_request - loop.time()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _javbus_next_request = loop.time() + _JAVBUS_REQUEST_INTERVAL
+    return await manager.computed.async_client.get_text(url, headers=headers)
+
 
 def get_title(html):
-    result = html.xpath("//h3/text()")
-    result = result[0].strip() if result else ""
-    return result
+    result = html.xpath("string(//h3[1])").strip()
+    if not result:
+        result = html.xpath("string(//title[1])").strip()
+    return re.sub(r"\s*-\s*JavBus\s*$", "", result, flags=re.IGNORECASE).strip()
 
 
 def getWebNumber(html, number):
-    result = html.xpath('//span[@class="header"][contains(text(), "識別碼:")]/../span[2]/text()')
-    return result[0] if result else number
+    for label in html.xpath("//span"):
+        label_text = "".join(label.itertext()).strip().lower().rstrip(":：")
+        if label_text not in {"識別碼", "识别码", "品番", "id"}:
+            continue
+        sibling = label.getnext()
+        if sibling is not None:
+            value = "".join(sibling.itertext()).strip()
+            if value:
+                return value
+        parent_text = "".join(label.getparent().itertext()).strip() if label.getparent() is not None else ""
+        value = parent_text.removeprefix("".join(label.itertext()).strip()).strip(" :：")
+        if value:
+            return value
+    return number
+
+
+def clean_title_number(title: str, *numbers: str) -> str:
+    for number in numbers:
+        number = number.strip()
+        if not number:
+            continue
+        title = re.sub(rf"^\s*{re.escape(number)}(?:\s+|$)", "", title, count=1, flags=re.IGNORECASE)
+    return title.strip()
 
 
 def getActor(html):
-    try:
-        result = (
-            str(html.xpath('//div[@class="star-name"]/a/text()')).strip(" ['']").replace("'", "").replace(", ", ",")
-        )
-    except Exception:
-        result = ""
-    return result
+    sections = html.xpath(
+        '//div[contains(concat(" ", normalize-space(@class), " "), " movie ") '
+        'and contains(concat(" ", normalize-space(@class), " "), " row ")]'
+    )
+    section = sections[0] if sections else html
+    names = []
+    for link in section.xpath('.//a[contains(@href, "/star/")]'):
+        name = "".join(link.itertext()).strip()
+        if name and name not in names:
+            names.append(name)
+    if not names:
+        names = [name.strip() for name in html.xpath('//div[contains(@class, "star-name")]/a/text()') if name.strip()]
+    return ",".join(dict.fromkeys(names))
 
 
 def getActorPhoto(html, url):
-    actor = html.xpath('//div[@class="star-name"]/../a/img/@title')
-    photo = html.xpath('//div[@class="star-name"]/../a/img/@src')
     data = {}
-    if len(actor) == len(photo):
-        for i in range(len(actor)):
-            if "http" not in photo[i]:
-                data[actor[i]] = url + photo[i]
-            else:
-                data[actor[i]] = photo[i]
-    else:
-        for each in actor:
-            data[each] = ""
+    for link in html.xpath('//a[contains(@href, "/star/")]'):
+        image = link.xpath(".//img[1]")
+        name = "".join(link.itertext()).strip()
+        if image:
+            name = (image[0].get("title") or image[0].get("alt") or name).strip()
+            photo = (image[0].get("src") or "").strip()
+        else:
+            photo = ""
+        if name and name not in data:
+            data[name] = urljoin(url + "/", photo) if photo else ""
     return data
 
 
 def getCover(html, url):  # 获取封面链接
-    result = html.xpath('//a[@class="bigImage"]/@href')
-    cover_url = (url + result[0] if "http" not in result[0] else result[0]) if result else ""
-    return cover_url
+    candidates = (
+        html.xpath('string(//meta[@property="og:image"][1]/@content)').strip(),
+        html.xpath('string(//a[contains(@class, "bigImage")][1]/@href)').strip(),
+        html.xpath(
+            'string((//img[contains(@class, "cover")] | //a[contains(@class, "bigImage")]//img)[1]/@src)'
+        ).strip(),
+    )
+    return next((urljoin(url + "/", candidate) for candidate in candidates if candidate), "")
 
 
 def get_poster_url(cover_url):  # 获取小封面链接
@@ -62,9 +135,11 @@ def get_poster_url(cover_url):  # 获取小封面链接
 
 
 def getRelease(html):  # 获取发行日期
-    result = html.xpath('//span[@class="header"][contains(text(), "發行日期:")]/../text()')
-    result = result[0].strip() if result else ""
-    return result
+    text = " ".join(html.xpath('//span[contains(@class, "header")]/parent::*//text()'))
+    match = re.search(
+        r"(?:發行日期|发行日期|発売日|release date)\s*[:：]?\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})", text, re.I
+    )
+    return match.group(1) if match else ""
 
 
 def getYear(release):
@@ -76,20 +151,16 @@ def getYear(release):
 
 
 def getMosaic(html):
-    select_tab = str(html.xpath('//li[@class="active"]/a/text()'))
-    mosaic = "有码" if "有碼" in select_tab else "无码"
-    return mosaic
+    active = " ".join(
+        html.xpath('//li[contains(@class, "active")]//a/@href | //li[contains(@class, "active")]//a/text()')
+    ).lower()
+    return "无码" if "uncensored" in active or "無碼" in active or "无码" in active else "有码"
 
 
 def getRuntime(html):
-    result = html.xpath('//span[@class="header"][contains(text(), "長度:")]/../text()')
-    if result:
-        result = result[0].strip()
-        result = re.findall(r"\d+", result)
-        result = result[0] if result else ""
-    else:
-        result = ""
-    return result
+    text = " ".join(html.xpath('//span[contains(@class, "header")]/parent::*//text()'))
+    match = re.search(r"(?:長度|长度|収録時間|runtime)\s*[:：]?\s*(\d+)", text, re.I)
+    return match.group(1) if match else ""
 
 
 def getStudio(html):
@@ -121,18 +192,19 @@ def getExtraFanart(html, url):  # 获取封面链接
     if result:
         new_list = []
         for each in result:
-            if "http" not in each:
-                each = url + each
-            new_list.append(each)
+            new_list.append(urljoin(url + "/", each))
     else:
         new_list = ""
     return new_list
 
 
 def getTag(html):  # 获取标签
-    result = html.xpath('//span[@class="genre"]/label/a[contains(@href, "/genre/")]/text()')
-    result = str(result).strip(" ['']").replace("'", "").replace(", ", ",") if result else ""
-    return result
+    tags = []
+    for link in html.xpath('//span[contains(@class, "genre")]//a[contains(@href, "/genre/")]'):
+        tag = "".join(link.itertext()).strip()
+        if tag and tag not in tags:
+            tags.append(tag)
+    return ",".join(tags)
 
 
 async def get_real_url(number, url_type, javbus_url, headers):  # 获取详情页链接
@@ -146,7 +218,7 @@ async def get_real_url(number, url_type, javbus_url, headers):  # 获取详情�
     debug_info = f"搜索地址: {url_search} "
     LogBuffer.info().write(debug_info)
     # ========================================================================搜索番号
-    html_search, error = await manager.computed.async_client.get_text(url_search, headers=headers)
+    html_search, error = await get_text_rate_limited(url_search, headers)
     # 判断是否需要登录
     if html_search is None:
         debug_info = f"网络请求错误: {error} "
@@ -181,10 +253,19 @@ async def main(
     LogBuffer.req().write(f"-> {website_name}")
     real_url = appoint_url
     javbus_url = manager.config.get_site_url(Website.JAVBUS, "https://www.javbus.com")
+    configured_cookie = manager.config.javbus.strip("; ")
+    cookie = "; ".join(part for part in ("age=verified", "existmag=mag", configured_cookie) if part)
     headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
-        "cookie": manager.config.javbus,
+        "Referer": javbus_url + "/",
+        "Cookie": cookie,
     }
+    requested_number, number_rewrite = rewrite_lookup_number(number)
 
     title = ""
     cover_url = ""
@@ -198,27 +279,22 @@ async def main(
     try:
         if not real_url:
             # 欧美去搜索，其他尝试直接拼接地址，没有结果时再搜索
-            if "." in number or re.search(r"[-_]\d{2}[-_]\d{2}[-_]\d{2}", number):  # 欧美影片
-                number = number.replace("-", ".").replace("_", ".")
-                real_url = await get_real_url(number, "us", javbus_url, headers)
+            if "." in requested_number or re.search(r"[-_]\d{2}[-_]\d{2}[-_]\d{2}", requested_number):  # 欧美影片
+                requested_number = requested_number.replace("-", ".").replace("_", ".")
+                real_url = await get_real_url(requested_number, "us", javbus_url, headers)
             else:
-                real_url = javbus_url + "/" + number
-                if number.upper().startswith("CWP") or number.upper().startswith("LAF"):
-                    temp_number = number.replace("-0", "-")
-                    if temp_number[-2] == "-":
+                real_url = javbus_url + "/" + requested_number
+                if requested_number.upper().startswith(("CWP", "LAF")):
+                    temp_number = requested_number.replace("-0", "-")
+                    if len(temp_number) >= 2 and temp_number[-2] == "-":
                         temp_number = temp_number.replace("-", "-0")
                     real_url = javbus_url + "/" + temp_number
 
         debug_info = f"番号地址: {real_url} "
         LogBuffer.info().write(debug_info)
-        htmlcode, error = await manager.computed.async_client.get_text(real_url, headers=headers)
+        htmlcode, error = await get_text_rate_limited(real_url, headers)
 
-        # 判断是否需要登录
-        if htmlcode is None:
-            debug_info = f"网络请求错误: {error} "
-            LogBuffer.info().write(debug_info)
-            raise Exception(debug_info)
-        if "lostpasswd" in htmlcode:
+        if htmlcode is not None and "lostpasswd" in htmlcode:
             raise Exception("Cookie 无效！请重新填写 Cookie 或更新节点！")
 
         if htmlcode is None:
@@ -229,20 +305,20 @@ async def main(
                 raise Exception(debug_info)
 
             # 欧美的不再搜索
-            if "." in number:
+            if "." in requested_number:
                 debug_info = "未匹配到番号！"
                 LogBuffer.info().write(debug_info)
                 raise Exception(debug_info)
 
             # 无码搜索结果
             elif mosaic == "无码" or mosaic == "無碼":
-                real_url = await get_real_url(number, "uncensored", javbus_url, headers)
+                real_url = await get_real_url(requested_number, "uncensored", javbus_url, headers)
 
             # 有码搜索结果
             else:
-                real_url = await get_real_url(number, "censored", javbus_url, headers)
+                real_url = await get_real_url(requested_number, "censored", javbus_url, headers)
 
-            htmlcode, error = await manager.computed.async_client.get_text(real_url, headers=headers)
+            htmlcode, error = await get_text_rate_limited(real_url, headers)
             if htmlcode is None:
                 debug_info = "未匹配到番号！"
                 LogBuffer.info().write(debug_info)
@@ -255,8 +331,9 @@ async def main(
             debug_info = "数据获取失败: 未获取到title"
             LogBuffer.info().write(debug_info)
             raise Exception(debug_info)
-        number = getWebNumber(html_info, number)  # 获取番号，用来替换标题里的番号
-        title = title.replace(number, "").strip()
+        web_number = getWebNumber(html_info, requested_number)
+        number = restore_lookup_number(web_number, number_rewrite)
+        title = clean_title_number(title, web_number, number)
         actor = getActor(html_info)  # 获取actor
         actor_photo = getActorPhoto(html_info, javbus_url)
         cover_url = getCover(html_info, javbus_url)  # 获取cover

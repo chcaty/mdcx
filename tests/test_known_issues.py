@@ -1,7 +1,7 @@
 import pytest
 
 from mdcx.config.enums import Language, Website
-from mdcx.config.models import Config
+from mdcx.config.models import DISABLED_CRAWLER_REASONS, Config
 from mdcx.config.v1 import ConfigV1
 from mdcx.gen.field_enums import CrawlerResultFields
 from mdcx.manual import ManualConfig
@@ -25,6 +25,26 @@ def test_broken_crawlers_are_not_enabled_by_default():
     assert Website.AVSOX not in config.website_youma
     assert Website.AVSOX not in config.website_wuma
     assert Website.AVSOX not in config.website_fc2
+
+
+def test_broken_crawler_reasons_are_recorded():
+    assert set(DISABLED_CRAWLER_REASONS) == {Website.AVSOX, Website.CABLEAV, Website.XCITY}
+    assert all(DISABLED_CRAWLER_REASONS.values())
+
+
+def test_javboss_style_defaults_prefer_javbus():
+    config = Config()
+
+    assert config.website_single == Website.JAVBUS
+    for field in (
+        CrawlerResultFields.TITLE,
+        CrawlerResultFields.ACTORS,
+        CrawlerResultFields.ALL_ACTORS,
+        CrawlerResultFields.TAGS,
+        CrawlerResultFields.THUMB,
+        CrawlerResultFields.POSTER,
+    ):
+        assert config.get_field_config(field).site_prority[0] == Website.JAVBUS
 
 
 def test_broken_crawlers_are_not_in_legacy_defaults():
