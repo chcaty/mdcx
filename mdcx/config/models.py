@@ -437,9 +437,7 @@ class Config(BaseModel):
             CrawlerResultFields.SCORE: FieldConfig(
                 site_prority=[Website.JAVBUS, Website.DMM, Website.JAVDB, Website.THEPORNDB]
             ),
-            CrawlerResultFields.WANTED: FieldConfig(
-                site_prority=[Website.JAVBUS, Website.DMM, Website.JAVDB]
-            ),
+            CrawlerResultFields.WANTED: FieldConfig(site_prority=[Website.JAVBUS, Website.DMM, Website.JAVDB]),
         },
         title="字段配置",
     )

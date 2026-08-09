@@ -110,7 +110,7 @@ def repair_nfo_bytes(content: bytes) -> tuple[bytes, tuple[str, ...]]:
     content, provider_tags_changed = _replace_invalid_provider_tags(content)
     repairs: list[str] = []
     if provider_tags_changed:
-        repairs.append("已将非法来源标签转换为 <uniqueid type=\"...\">")
+        repairs.append('已将非法来源标签转换为 <uniqueid type="...">')
 
     try:
         root = etree.fromstring(content, _strict_parser())
