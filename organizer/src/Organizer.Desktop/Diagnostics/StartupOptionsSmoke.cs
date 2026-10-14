@@ -21,6 +21,8 @@ internal static class StartupOptionsSmoke
             "Windows installed startup selects the absolute bundled interpreter without PATH lookup");
         check(StartupOptions.ResolveDefaultWorkerPath(application, checkout) == bundledWorker,
             "Installed worker takes precedence over an unrelated current-directory checkout");
+        check(StartupOptions.ResolveDefaultWorkerPath(Path.Combine(application, "."), checkout) == bundledWorker,
+            "Installed worker paths are canonical even when the application path contains dot segments");
 
         File.Delete(bundledWorker);
         check(StartupOptions.ResolveDefaultWorkerPath(application, checkout) == bundledWorker,
@@ -37,8 +39,11 @@ internal static class StartupOptionsSmoke
         check(StartupOptions.ResolveDefaultPythonExecutable(application, isWindows: true) == "python"
               && StartupOptions.ResolveDefaultPythonExecutable(application, isWindows: false) == "python3",
             "Unpackaged development startup keeps platform Python command defaults");
-        check(StartupOptions.ResolveDefaultWorkerPath(application, checkout) == developmentWorker,
+        var resolvedDevelopmentWorker = StartupOptions.ResolveDefaultWorkerPath(application, checkout);
+        check(resolvedDevelopmentWorker == developmentWorker,
             "Unpackaged development startup can still find the current-directory checkout worker");
+        check(resolvedDevelopmentWorker == Path.GetFullPath(resolvedDevelopmentWorker),
+            "Discovered development worker paths use canonical platform separators");
         var developmentOutput = Path.Combine(checkout, "organizer", "src", "Desktop", "bin");
         Directory.CreateDirectory(developmentOutput);
         check(StartupOptions.ResolveDefaultWorkerPath(developmentOutput, application) == developmentWorker,

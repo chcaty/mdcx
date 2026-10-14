@@ -79,7 +79,7 @@ public sealed record StartupOptions(string? DemoPath = null, string? WorkerPath 
 
     internal static string ResolveDefaultWorkerPath(string baseDirectory, string workingDirectory)
     {
-        var installedWorker = Path.Combine(baseDirectory, "worker", "main.py");
+        var installedWorker = Path.GetFullPath(Path.Combine(baseDirectory, "worker", "main.py"));
         // An installed bundle must never accidentally run a worker from the
         // current directory or an unrelated checkout if its own worker is lost.
         if (HasInstalledLayout(baseDirectory)) return installedWorker;
@@ -89,7 +89,9 @@ public sealed record StartupOptions(string? DemoPath = null, string? WorkerPath 
             {
                 foreach (var relative in new[] { "worker/main.py", "organizer/worker/main.py" })
                 {
-                    var candidate = Path.Combine(dir.FullName, relative);
+                    // GetFullPath normalizes the source-relative forward slashes
+                    // to Windows separators as well as removing dot segments.
+                    var candidate = Path.GetFullPath(Path.Combine(dir.FullName, relative));
                     if (File.Exists(candidate)) return candidate;
                 }
             }

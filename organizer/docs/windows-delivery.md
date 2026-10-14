@@ -23,7 +23,7 @@ A workflow definition alone is not proof of a passing build. See the specific Ac
 
 ## Download and install
 
-Open the successful **Organizer Windows CI** run and its **MDCx-Organizer-Windows-x64-…** artifact. GitHub wraps Actions artifacts in a ZIP; extract the contained **Setup.exe** and run that installer. The ZIP is an artifact transport wrapper, not a source package or a nested portable bundle. A directly shared installer attachment contains the same `.exe` bytes.
+Open the successful **Organizer Windows CI** run and download its **MDCxOrganizer-…-win-x64-setup.exe** artifact. The pinned official upload-artifact v7 action uses `archive: false`, so the installer is available directly as an `.exe`, without a ZIP wrapper. The separate **MDCx-Organizer-Windows-x64-information-…** ZIP contains its SHA-256, package manifest and readme. A directly shared installer attachment contains the same `.exe` bytes.
 
 The installer is **unsigned**. No signing certificate or reputation is claimed; Windows may show an unknown-publisher or security warning. Verify the download source and supplied SHA-256 before deciding whether to install. The assistant does not bypass those warnings. Installation is per-user and does not require administrator access.
 
