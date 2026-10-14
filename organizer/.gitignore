@@ -5,3 +5,6 @@
 *.db-shm
 *.db-wal
 artifacts/
+
+# Override the legacy root ignore for the required Avalonia application manifest.
+!src/Organizer.Desktop/app.manifest
