@@ -17,6 +17,7 @@ public partial class App : Application
             var window = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = window;
             desktop.Exit += (_, _) => viewModel.Dispose();
+            Diagnostics.PackageSmoke.Current?.Attach(desktop, window, viewModel);
         }
         base.OnFrameworkInitializationCompleted();
     }

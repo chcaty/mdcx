@@ -11,7 +11,11 @@ A new native **Avalonia + .NET 10** media-file workbench, kept separate from the
 - Persist the scan index, reviewed metadata and dry-run plans in a versioned application-owned SQLite database. Changed source fingerprints invalidate old reviews. Repeated plans are idempotent by content ID.
 - Preview deterministic target filenames and preserved subtitle language suffixes; block collisions, existing targets, unsafe ancestors, traversal, links, changed source files, duplicate selections, reserved-name/path-limit problems.
 
-## Run
+## Windows installer
+
+The feature branch now includes a separate automatic Windows build/test/installer pipeline. A successful **Organizer Windows CI** run produces an unsigned per-user x64 installer with bundled .NET and Python; no developer SDK or Python setup is needed for the installed app. The application remains preview-only and fixture-only. See [Windows delivery](docs/windows-delivery.md) for download, verification, trigger limitations and uninstall/data safety. Check the actual run result; a workflow file is not evidence that a build passed.
+
+## Run from source
 
 Prerequisites: **.NET SDK 10.0.x**, **Python 3.12+**, and a desktop supported by Avalonia. Packages are pinned with lock files. The legacy app still separately requires Python >=3.13.4 and its own dependencies; the new fixture worker uses only the Python standard library.
 
@@ -58,6 +62,6 @@ A safe preview is a point-in-time check, not authorization or proof that a futur
 - Live/provider authentication, site health verification, all 38 legacy sources, rule/config migration, complete legacy metadata fields
 - Real-poster downloads, ffprobe technical metadata, hashing-based duplicate detection, series/edition/multipart naming grammars
 - Automatic acceptance, confidence calibration, embedding/AI matching, background unattended processing
-- Packaged installers, signing, auto-update, Windows/macOS runtime verification, large-library performance claims
+- Signing, auto-update, macOS verification, broad Windows hardware/desktop validation, large-library performance claims
 
 The current source parsers demonstrate a migrated subset and historical search/detail contracts under strict offline request replay, not a completed scraper replacement. Provider-internal IDs are separate from namespaced catalog identifiers; a ThePornDB slug is never treated as an xcity catalog number. Request routes are checked without opening sockets, and current live schema/availability remain unverified. Exact identity and field-provenance checks matter more than HTTP success. Test results describe frozen fictional fixtures; they do not establish live-site accuracy or coverage.

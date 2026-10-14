@@ -7,5 +7,7 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <Deterministic>true</Deterministic>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Keep portable development and self-contained Windows publish graphs separately locked. -->
+    <NuGetLockFilePath Condition="'$(RuntimeIdentifier)' == 'win-x64' Or '$(RuntimeIdentifiers)' == 'win-x64'">packages.win-x64.lock.json</NuGetLockFilePath>
   </PropertyGroup>
 </Project>

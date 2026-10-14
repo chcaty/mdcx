@@ -11,9 +11,9 @@ WORKER_ROOT = Path(__file__).resolve().parents[1]
 if str(WORKER_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKER_ROOT))
 
-from mdcx_worker.adapters import DEFAULT_SOURCES
-from mdcx_worker.models import Candidate, WorkerError
-from mdcx_worker.protocol import (
+from mdcx_worker.adapters import DEFAULT_SOURCES  # noqa: E402 - direct test discovery adds worker root above
+from mdcx_worker.models import Candidate, WorkerError  # noqa: E402 - direct test discovery adds worker root above
+from mdcx_worker.protocol import (  # noqa: E402 - direct test discovery adds worker root above
     MAX_LINE_BYTES,
     Command,
     Worker,

@@ -12,7 +12,7 @@ WORKER_ROOT = Path(__file__).resolve().parents[1]
 if str(WORKER_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKER_ROOT))
 
-from mdcx_worker.protocol import MAX_LINE_BYTES
+from mdcx_worker.protocol import MAX_LINE_BYTES  # noqa: E402 - direct test discovery adds worker root above
 
 MAIN = WORKER_ROOT / "main.py"
 

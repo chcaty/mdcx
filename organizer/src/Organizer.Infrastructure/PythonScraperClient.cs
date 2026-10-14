@@ -42,6 +42,9 @@ public sealed class PythonScraperClient(string pythonExecutable, string workerSc
                 StandardInputEncoding = new UTF8Encoding(false)
             }
         };
+        // Embedded Python ignores PYTHONDONTWRITEBYTECODE from the environment.
+        // The command-line switch also prevents writes into an installed payload.
+        process.StartInfo.ArgumentList.Add("-B");
         process.StartInfo.ArgumentList.Add("-u");
         process.StartInfo.ArgumentList.Add(script);
         process.StartInfo.Environment["PYTHONIOENCODING"] = "utf-8";

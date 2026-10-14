@@ -5,6 +5,8 @@ $env:AVALONIA_TELEMETRY_OPTOUT = '1'
 $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
 $env:MSBUILDDISABLENODEREUSE = '1'
 $env:ORGANIZER_PYTHON = 'python'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
 dotnet restore MediaOrganizer.sln --locked-mode --disable-parallel --disable-build-servers -m:1
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 dotnet build MediaOrganizer.sln -c Release --no-restore --disable-build-servers -m:1

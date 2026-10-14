@@ -23,6 +23,7 @@ internal static class WorkbenchSmoke
         }
         try
         {
+            StartupOptionsSmoke.Run(root, Check);
             await File.WriteAllTextAsync(Path.Combine(source, "DEMO-001.mkv"), "Synthetic media fixture. Not playable.");
             await File.WriteAllTextAsync(Path.Combine(source, "DEMO-001.zh-CN.srt"), "Synthetic subtitle fixture.");
             await File.WriteAllTextAsync(Path.Combine(source, "DEMO-002.mp4"), "Second synthetic media fixture.");

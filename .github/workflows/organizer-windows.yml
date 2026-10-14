@@ -1,0 +1,163 @@
+name: Organizer Windows CI
+
+on:
+  push:
+    branches: [feat/media-organizer-workbench-20261014]
+    paths:
+      - 'organizer/**'
+      - '.github/workflows/organizer-windows.yml'
+  pull_request:
+    branches: [master, develop, feat/media-organizer-workbench-20261014]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'organizer/**'
+      - '.github/workflows/organizer-windows.yml'
+  workflow_dispatch:
+
+# No secrets, package publishing, deployment, release, or write-capable checkout.
+permissions:
+  contents: read
+concurrency:
+  group: organizer-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  AVALONIA_TELEMETRY_OPTOUT: '1'
+  DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
+  DOTNET_NOLOGO: '1'
+  MSBUILDDISABLENODEREUSE: '1'
+  PYTHONDONTWRITEBYTECODE: '1'
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: 'utf-8'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+jobs:
+  verify:
+    name: Offline checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.402'
+          cache: true
+          cache-dependency-path: organizer/**/packages*.lock.json
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Offline aggregate (only generated media and fixture replay)
+        run: |
+          New-Item -ItemType Directory -Force organizer/artifacts/ci | Out-Null
+          & pwsh -NoProfile -File ./organizer/scripts/check.ps1 *> organizer/artifacts/ci/checks.log
+          $result = $LASTEXITCODE
+          Get-Content organizer/artifacts/ci/checks.log
+          if ($result -ne 0) { exit $result }
+      - name: Prove telemetry guard rejects missing environment opt-out
+        run: |
+          $project = 'organizer/src/Organizer.Desktop/Organizer.Desktop.csproj'
+          try {
+            Remove-Item Env:AVALONIA_TELEMETRY_OPTOUT
+            dotnet msbuild $project -t:RequireAvaloniaTelemetryOptOut -p:UsedAvaloniaProducts=Organizer -p:AVALONIA_TELEMETRY_OPTOUT=1 *> organizer/artifacts/ci/telemetry-negative.log
+            if ($LASTEXITCODE -eq 0) { throw 'Telemetry guard accepted a property without the actual environment opt-out.' }
+            if (-not (Select-String -Path organizer/artifacts/ci/telemetry-negative.log -Pattern 'Set AVALONIA_TELEMETRY_OPTOUT=1' -Quiet)) { throw 'Negative preflight failed for an unexpected reason.' }
+          } finally {
+            $env:AVALONIA_TELEMETRY_OPTOUT = '1'
+          }
+          dotnet msbuild $project -t:RequireAvaloniaTelemetryOptOut -p:UsedAvaloniaProducts=Organizer *> organizer/artifacts/ci/telemetry-positive.log
+          if ($LASTEXITCODE) { Get-Content organizer/artifacts/ci/telemetry-positive.log; exit $LASTEXITCODE }
+      - name: Python lint and patch whitespace
+        run: |
+          python -m pip install --disable-pip-version-check ruff==0.12.5
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -m ruff check organizer/worker organizer/scripts --isolated
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Preserve check logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: organizer-checks-${{ matrix.os }}
+          path: organizer/artifacts/ci/
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows-installer:
+    name: Build and verify unsigned Windows installer
+    needs: verify
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.402'
+          cache: true
+          cache-dependency-path: organizer/**/packages*.lock.json
+      - name: Package self-contained app, embedded Python and per-user installer
+        id: package
+        run: |
+          New-Item -ItemType Directory -Force organizer/artifacts/ci | Out-Null
+          & pwsh -NoProfile -File ./organizer/scripts/package-windows.ps1 -BuildLabel "ci-$env:GITHUB_RUN_NUMBER-$env:GITHUB_RUN_ATTEMPT" *> organizer/artifacts/ci/package.log
+          $result = $LASTEXITCODE
+          Get-Content organizer/artifacts/ci/package.log
+          if ($result -ne 0) { exit $result }
+      - name: Install, native startup, bundled worker and data-preserving uninstall
+        env:
+          INSTALLER_PATH: ${{ steps.package.outputs.installer }}
+        run: |
+          & pwsh -NoProfile -File ./organizer/scripts/test-windows-package.ps1 -Installer $env:INSTALLER_PATH *> organizer/artifacts/ci/installer-test.log
+          $result = $LASTEXITCODE
+          Get-Content organizer/artifacts/ci/installer-test.log
+          if ($result -ne 0) { exit $result }
+      - name: Upload verified installer
+        id: installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: MDCx-Organizer-Windows-x64-${{ github.run_number }}
+          path: |
+            organizer/artifacts/windows/*.exe
+            organizer/artifacts/windows/SHA256SUMS.txt
+            organizer/artifacts/windows/README-WINDOWS.txt
+            organizer/artifacts/windows/package-manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Delivery summary
+        env:
+          ARTIFACT_URL: ${{ steps.installer.outputs.artifact-url }}
+        run: |
+          @"
+          ## Windows x64 installer
+          - Verified unsigned per-user installer: $env:ARTIFACT_URL
+          - Includes self-contained .NET runtime, embedded Python and offline fixture worker.
+          - Preview-only. No real media execution or live scraping.
+          - Installer/uninstaller smoke uses generated temporary data, not user media.
+          - No signing certificate, release, tag, auto-update or deployment is used.
+          "@ >> $env:GITHUB_STEP_SUMMARY
+      - name: Preserve packaging and native smoke logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: organizer-windows-package-diagnostics
+          path: |
+            organizer/artifacts/ci/
+            organizer/artifacts/windows-test/
+          if-no-files-found: warn
+          retention-days: 14

@@ -10,6 +10,18 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Package diagnostics must establish their isolated paths before any
+        // normal application options or user index can be opened.
+        if (args.Contains("--smoke-test-package", StringComparer.Ordinal))
+        {
+            Environment.ExitCode = Diagnostics.PackageSmoke.Run(args, options =>
+            {
+                Options = options;
+                // Deliberately use the real platform backend, never Headless.
+                return BuildAvaloniaApp().StartWithClassicDesktopLifetime([]);
+            });
+            return;
+        }
         Options = StartupOptions.Parse(args);
         if (args.Contains("--smoke-test-ui", StringComparer.Ordinal))
         {
@@ -44,15 +56,34 @@ public sealed record StartupOptions(string? DemoPath = null, string? WorkerPath 
         // Rendering always uses a fresh index, never the user's saved reviews.
         var index = screenshot is null && !smokeView ? null : Path.Combine(Path.GetTempPath(), $"mdcx-screenshot-{Guid.NewGuid():N}", "index.db");
         var demo = screenshot is not null && args.Contains("--screenshot-empty", StringComparer.Ordinal) ? null : Read("--demo");
-        return new(demo, Read("--worker"), Read("--python") ?? (OperatingSystem.IsWindows() ? "python" : "python3"), screenshot,
+        return new(demo, Read("--worker"), Read("--python") ?? ResolveDefaultPythonExecutable(AppContext.BaseDirectory, OperatingSystem.IsWindows()), screenshot,
             args.Contains("--screenshot-plan", StringComparer.Ordinal), index,
             args.Contains("--screenshot-fixture", StringComparer.Ordinal), Dimension("--screenshot-width", 1440, 1160), Dimension("--screenshot-height", 900, 740), scale, smokeView);
     }
 
+    internal static string BundledPythonPath => Path.Combine(AppContext.BaseDirectory, "python", "python.exe");
+
+    private static bool HasInstalledLayout(string baseDirectory) => Directory.Exists(Path.Combine(baseDirectory, "python"))
+        || File.Exists(Path.Combine(baseDirectory, "worker", "main.py"));
+
+    internal static string ResolveDefaultPythonExecutable(string baseDirectory, bool isWindows) =>
+        isWindows && HasInstalledLayout(baseDirectory)
+            ? Path.Combine(baseDirectory, "python", "python.exe")
+            : isWindows ? "python" : "python3";
+
     public string ResolveWorkerPath()
     {
         if (!string.IsNullOrWhiteSpace(WorkerPath)) return Path.GetFullPath(WorkerPath);
-        foreach (var start in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
+        return ResolveDefaultWorkerPath(AppContext.BaseDirectory, Environment.CurrentDirectory);
+    }
+
+    internal static string ResolveDefaultWorkerPath(string baseDirectory, string workingDirectory)
+    {
+        var installedWorker = Path.Combine(baseDirectory, "worker", "main.py");
+        // An installed bundle must never accidentally run a worker from the
+        // current directory or an unrelated checkout if its own worker is lost.
+        if (HasInstalledLayout(baseDirectory)) return installedWorker;
+        foreach (var start in new[] { baseDirectory, workingDirectory })
         {
             for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
             {
@@ -63,6 +94,6 @@ public sealed record StartupOptions(string? DemoPath = null, string? WorkerPath 
                 }
             }
         }
-        return Path.Combine(AppContext.BaseDirectory, "worker", "main.py");
+        return installedWorker;
     }
 }

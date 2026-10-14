@@ -1,5 +1,7 @@
 # Validation record
 
+The record below describes the original Linux-only source candidate. The subsequent Windows installer pipeline and its observed run results are documented separately in [Windows delivery](windows-delivery.md); historical limitations below should not be interpreted as a current CI result.
+
 Verified 2026-10-14 UTC on **Debian GNU/Linux 13, x86-64**, with Microsoft .NET SDK **10.0.402** and Python **3.12.14**. This records the final local candidate, not a released product or a live scraping benchmark.
 
 ## Passed
