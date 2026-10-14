@@ -1,3 +1,5 @@
+import asyncio
+import socket
 import sys
 import unittest
 from pathlib import Path
@@ -124,9 +126,28 @@ class QualityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_fixture_mode_never_opens_a_socket(self):
         from unittest.mock import patch
-        with patch("socket.socket", side_effect=AssertionError("Unexpected network socket")):
-            result = await self.matcher().match("DEMO-006")
-            json_result = await self.matcher().match("Harbor of Stars", ("theporndb_movies",))
+        loop = asyncio.get_running_loop()
+        loop_errors = []
+        previous_handler = loop.get_exception_handler()
+        loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
+        try:
+            # Preserve the class for Windows Proactor isinstance checks on its
+            # existing wakeup socket, but reject and count every new socket.
+            with (patch.object(socket.socket, "__new__", side_effect=AssertionError("Unexpected network socket")) as socket_call,
+                  patch("socket.create_connection", side_effect=AssertionError("Unexpected network connection")) as connect_call,
+                  patch("urllib.request.urlopen", side_effect=AssertionError("Unexpected live HTTP")) as urlopen_call):
+                result = await self.matcher().match("DEMO-006")
+                json_result = await self.matcher().match("Harbor of Stars", ("theporndb_movies",))
+                # Run pending loop callbacks while both guards are still active.
+                checkpoint = loop.create_future()
+                loop.call_soon(checkpoint.set_result, None)
+                await checkpoint
+                socket_call.assert_not_called()
+                connect_call.assert_not_called()
+                urlopen_call.assert_not_called()
+        finally:
+            loop.set_exception_handler(previous_handler)
+        self.assertEqual(loop_errors, [], f"Unexpected event-loop exceptions: {loop_errors!r}")
         self.assertIsNone(result[0].year)
         self.assertEqual(json_result[0].year, 2023)
 

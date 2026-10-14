@@ -26,19 +26,39 @@ $env:MSBUILDDISABLENODEREUSE = '1'
 if (-not $InnoCompiler) {
     $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
     $candidates = @(
-        $(if ($command) { $command.Source }),
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+        $(if ($command) { $command.Source })
     ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) }
     $InnoCompiler = $candidates | Select-Object -First 1
 }
 if (-not $InnoCompiler -or -not (Test-Path -LiteralPath $InnoCompiler -PathType Leaf)) {
     throw 'Inno Setup 6 ISCC.exe is required. Use the documented windows-2022 runner with its preinstalled compiler.'
 }
+$InnoCompiler = (Resolve-Path -LiteralPath $InnoCompiler).Path
 $compilerInfo = (Get-Item -LiteralPath $InnoCompiler).VersionInfo
-if ($compilerInfo.FileMajorPart -ne 6 -or $compilerInfo.FileMinorPart -lt 3) { throw 'Inno Setup 6.3 or newer in the 6.x series is required.' }
-$compilerVersion = $compilerInfo.FileVersion
-Write-Host "Using Inno Setup $compilerVersion at $InnoCompiler"
+Write-Host "Inno compiler path: $InnoCompiler"
+Write-Host "Launcher metadata only: FileVersion=$($compilerInfo.FileVersion); ProductVersion=$($compilerInfo.ProductVersion)"
+. (Join-Path $packaging 'inno-compiler.ps1')
+$probeFile = Join-Path $stage 'compiler-probe.iss'
+@'
+[Setup]
+AppName=MDCx compiler version probe
+AppVersion=0.0.0
+DefaultDirName={tmp}\MDCxCompilerProbe
+CreateAppDir=no
+Uninstallable=no
+Output=no
+'@ | Set-Content -LiteralPath $probeFile -Encoding ascii
+# /O- is supported by Inno 6.x and prevents an installer being emitted.
+# Unlike the PE metadata (which can belong to a shim), the engine banner
+# describes the compiler actually loaded by ISCC.
+$compilerBanner = (& $InnoCompiler '/O-' $probeFile 2>&1 | Out-String)
+$probeExitCode = $LASTEXITCODE
+Write-Host $compilerBanner
+if ($probeExitCode -ne 0) { throw "Inno compiler no-output probe failed ($probeExitCode); see path, metadata and banner above." }
+$compilerVersion = ConvertFrom-InnoCompilerBanner -Banner $compilerBanner
+Write-Host "Using verified Inno Setup engine $compilerVersion at $InnoCompiler"
 
 Push-Location $organizer
 try {

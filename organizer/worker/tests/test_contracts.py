@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import sys
 import unittest
 from dataclasses import replace
@@ -719,18 +720,32 @@ class OfflineReplayContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_fixture_and_replay_matchers_never_open_network_connections(self):
         def forbidden(*_args, **_kwargs):
             raise AssertionError("Offline contracts must never perform live HTTP")
-        with (patch("socket.socket", side_effect=forbidden) as socket_call,
-              patch("socket.create_connection", side_effect=forbidden) as connect_call,
-              patch("urllib.request.urlopen", side_effect=forbidden) as urlopen_call):
-            fixtures = FixtureTransport()
-            number = await matcher(fixtures).match("DEMO-001")
-            title = await matcher(fixtures).match("Harbor of Stars", ("theporndb_movies",))
-            replay = ReplayTransport([(XCITY_SEARCH, Response(200, xcity_search("/avod/detail/?id=1001"), fixture=True)), (XCITY_DETAIL, Response(200, xcity_detail(), fixture=True))])
-            replayed = await matcher(replay).match("DEMO-001", ("xcity",))
-            replay.assert_complete()
-            socket_call.assert_not_called()
-            connect_call.assert_not_called()
-            urlopen_call.assert_not_called()
+        loop = asyncio.get_running_loop()
+        loop_errors = []
+        previous_handler = loop.get_exception_handler()
+        loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
+        try:
+            # Keep socket.socket a class: Windows Proactor checks its existing
+            # wakeup socket with isinstance, without opening a network socket.
+            with (patch.object(socket.socket, "__new__", side_effect=forbidden) as socket_call,
+                  patch("socket.create_connection", side_effect=forbidden) as connect_call,
+                  patch("urllib.request.urlopen", side_effect=forbidden) as urlopen_call):
+                fixtures = FixtureTransport()
+                number = await matcher(fixtures).match("DEMO-001")
+                title = await matcher(fixtures).match("Harbor of Stars", ("theporndb_movies",))
+                replay = ReplayTransport([(XCITY_SEARCH, Response(200, xcity_search("/avod/detail/?id=1001"), fixture=True)), (XCITY_DETAIL, Response(200, xcity_detail(), fixture=True))])
+                replayed = await matcher(replay).match("DEMO-001", ("xcity",))
+                replay.assert_complete()
+                # Drain pending callbacks before restoring guards or the handler.
+                checkpoint = loop.create_future()
+                loop.call_soon(checkpoint.set_result, None)
+                await checkpoint
+                socket_call.assert_not_called()
+                connect_call.assert_not_called()
+                urlopen_call.assert_not_called()
+        finally:
+            loop.set_exception_handler(previous_handler)
+        self.assertEqual(loop_errors, [], f"Unexpected event-loop exceptions: {loop_errors!r}")
         self.assertEqual(number[0].id, "DEMO-001")
         self.assertEqual(title[0].id, "theporndb_movies:harbor-of-stars")
         self.assertEqual(replayed[0].sourceId, "1001")

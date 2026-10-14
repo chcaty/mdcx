@@ -76,6 +76,10 @@ jobs:
           }
           dotnet msbuild $project -t:RequireAvaloniaTelemetryOptOut -p:UsedAvaloniaProducts=Organizer *> organizer/artifacts/ci/telemetry-positive.log
           if ($LASTEXITCODE) { Get-Content organizer/artifacts/ci/telemetry-positive.log; exit $LASTEXITCODE }
+      - name: Installer compiler parser regression
+        run: |
+          pwsh -NoProfile -File organizer/packaging/windows/test-inno-compiler.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Python lint and patch whitespace
         run: |
           python -m pip install --disable-pip-version-check ruff==0.12.5
