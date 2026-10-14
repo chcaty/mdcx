@@ -49,7 +49,22 @@ class DependencyPackagingTests(unittest.TestCase):
                 archive.writestr(license_name, "Synthetic packaging test license. " * 8)
             if extra:
                 for filename, content in extra:
-                    archive.writestr(filename, content)
+                    # Passing an adversarial string to ZipInfo's constructor
+                    # would sanitize it before writing on Windows (and truncate
+                    # NULs on every platform). Assign after construction so both
+                    # ZIP headers retain the actual adversarial name bytes.
+                    entry = zipfile.ZipInfo("inert-fixture-placeholder")
+                    entry.filename = filename
+                    entry.orig_filename = filename
+                    archive.writestr(entry, content)
+        if extra:
+            payload = path.read_bytes()
+            with zipfile.ZipFile(path) as archive:
+                originals = [entry.orig_filename for entry in archive.infolist()]
+            for filename, _ in extra:
+                self.assertIn(filename, originals)
+                self.assertEqual(payload.count(filename.encode("utf-8")), 2,
+                                 "Adversarial name must survive in local and central ZIP headers")
         package["size"] = path.stat().st_size
         package["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
         return path
@@ -104,13 +119,65 @@ class DependencyPackagingTests(unittest.TestCase):
                     load_lock(self.lock_path)
 
     def test_path_traversal_hooks_native_and_relocation_rejected(self):
-        for filename in ("../outside.py", "/outside.py", "C:/outside.py", "package\\bad.py", "evil.pth",
-                         "native.pyd", "native.dll", "runtime.exe", "archive.data/scripts/tool"):
+        cases = (
+            ("../outside.py", "Unsafe wheel archive path"),
+            ("/outside.py", "Unsafe wheel archive path"),
+            ("C:/outside.py", "Unsafe wheel archive path"),
+            ("package\\bad.py", "Unsafe wheel archive path|normalized or truncated"),
+            ("evil.pth", "Executable hooks and native wheel payloads"),
+            ("native.pyd", "Executable hooks and native wheel payloads"),
+            ("native.dll", "Executable hooks and native wheel payloads"),
+            ("runtime.exe", "Executable hooks and native wheel payloads"),
+            ("archive.data/scripts/tool", "Wheel relocation data"),
+        )
+        for filename, message in cases:
             with self.subTest(filename=filename):
                 package = self.lock["packages"][0]
                 path = self.make_wheel(package, [(filename, "not executable")])
-                with self.assertRaises(ValueError):
+                with self.assertRaisesRegex(ValueError, message):
                     verify_archive(path, package)
+
+    def test_raw_backslash_rejected_without_name_normalization(self):
+        package = self.lock["packages"][0]
+        filename = "package\\bad.py"
+        path = self.make_wheel(package, [(filename, "inert")])
+        with patch.object(zipfile.os, "sep", "/"), patch.object(zipfile.os, "altsep", None):
+            with zipfile.ZipFile(path) as archive:
+                entry = next(entry for entry in archive.infolist() if entry.orig_filename == filename)
+                self.assertEqual(entry.filename, filename)
+                self.assertEqual(archive.read(entry), b"inert")
+            with self.assertRaisesRegex(ValueError, "Unsafe wheel archive path"):
+                verify_archive(path, package)
+
+    def test_raw_backslash_rejected_after_windows_name_normalization(self):
+        package = self.lock["packages"][0]
+        filename = "package\\bad.py"
+        path = self.make_wheel(package, [(filename, "inert")])
+        # Exercise Windows' ZipInfo behavior on Linux too, rather than letting
+        # the host platform decide whether the raw-name check gets coverage.
+        with patch.object(zipfile.os, "sep", "\\"), patch.object(zipfile.os, "altsep", "/"):
+            with zipfile.ZipFile(path) as archive:
+                entry = next(entry for entry in archive.infolist() if entry.orig_filename == filename)
+                self.assertEqual(entry.filename, "package/bad.py")
+                self.assertEqual(archive.read(entry), b"inert")
+            with self.assertRaisesRegex(ValueError, "normalized or truncated"):
+                verify_archive(path, package)
+
+    def test_nul_name_truncation_rejected_before_any_extraction(self):
+        for filename in ("package/good.py\x00hidden", "\x00hidden.py", "package\\bad.py\x00.pth"):
+            with self.subTest(filename=filename):
+                package = self.lock["packages"][0]
+                path = self.make_wheel(package, [(filename, "inert")])
+                self.save_lock()
+                with zipfile.ZipFile(path) as archive:
+                    entry = next(entry for entry in archive.infolist() if entry.orig_filename == filename)
+                    self.assertNotEqual(entry.filename, entry.orig_filename)
+                    self.assertNotIn("\x00", entry.filename)
+                    self.assertEqual(archive.read(entry), b"inert")
+                with self.assertRaisesRegex(ValueError, "normalized or truncated"):
+                    bundle(self.lock_path, self.destination, self.licenses, self.cache, offline=True)
+                self.assertFalse(self.destination.exists())
+                self.assertFalse(self.licenses.exists())
 
     def test_case_colliding_paths_rejected(self):
         package = self.lock["packages"][0]

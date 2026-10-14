@@ -67,7 +67,12 @@ def verify_archive(path: Path, package: dict) -> list[str]:
         names = set()
         total = 0
         for entry in archive.infolist():
-            name = entry.filename
+            # ZipInfo.filename has already truncated NULs and, on Windows,
+            # changed backslashes to slashes. Inspect the original archive name
+            # so normalization cannot erase evidence of an unsafe path.
+            name = entry.orig_filename
+            require(name == entry.filename and "\x00" not in name,
+                    "Wheel archive path was normalized or truncated")
             components = PurePosixPath(name).parts
             require(name and not name.startswith("/") and "\\" not in name and ":" not in name
                     and ".." not in components and "." not in name.split("/"), "Unsafe wheel archive path")
