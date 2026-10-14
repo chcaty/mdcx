@@ -159,6 +159,65 @@ AsyncTest("SQLite cancellation does not replace previous scan", async () =>
     try { await store.SaveScanAsync(new(scan.Root, [], []), cancel.Token); throw new Exception("Expected cancellation"); } catch (OperationCanceledException) { }
     Assert((await store.LoadReviewsAsync()).Count == 1);
 });
+AsyncTest("SQLite edit invalidation survives reopen and cannot erase newer review", async () =>
+{
+    var scan = await Scan("edit-index", "DEMO-001.mkv");
+    var asset = scan.Assets[0];
+    var db = Path.Combine(Dir("edit-db"), "index.db");
+    var original = Review();
+    var newer = Review(title: "Newer accepted title");
+    using (var store = new IndexStore(db))
+    {
+        await store.SaveScanAsync(scan);
+        await store.SaveReviewAsync(asset.Id, original, asset.Fingerprint);
+        Assert(await store.InvalidateReviewAsync(asset.Id, asset.Fingerprint, original));
+        Assert(!await store.InvalidateReviewAsync(asset.Id, asset.Fingerprint, original));
+    }
+    using (var store = new IndexStore(db))
+    {
+        Assert((await store.LoadReviewsAsync()).Count == 0);
+        await store.SaveReviewAsync(asset.Id, newer, asset.Fingerprint);
+        Assert(!await store.InvalidateReviewAsync(asset.Id, asset.Fingerprint, original));
+        Assert((await store.LoadReviewsAsync())[asset.Id].Title == newer.Title);
+        using var cancel = new CancellationTokenSource(); cancel.Cancel();
+        try { await store.InvalidateReviewAsync(asset.Id, asset.Fingerprint, newer, cancel.Token); throw new Exception("Expected cancellation"); }
+        catch (OperationCanceledException) { }
+        Assert((await store.LoadReviewsAsync())[asset.Id].Title == newer.Title);
+        File.AppendAllText(asset.SourcePath, "different fingerprint");
+        var changed = await scanner.ScanAsync(scan.Root);
+        await store.SaveScanAsync(changed);
+        await store.SaveReviewAsync(asset.Id, newer, changed.Assets[0].Fingerprint);
+        Assert(!await store.InvalidateReviewAsync(asset.Id, asset.Fingerprint, newer));
+        Assert((await store.LoadReviewsAsync())[asset.Id].Title == newer.Title);
+    }
+});
+AsyncTest("review snapshot includes sidecars and rejects a stale sidecar-only save", async () =>
+{
+    var scan = await Scan("snapshot-source", "DEMO-001.mkv", "DEMO-001.zh.srt");
+    var asset = scan.Assets[0];
+    var stamp = MediaSnapshot.Fingerprint(asset);
+    Assert(stamp == MediaSnapshot.Fingerprint(asset with { Sidecars = asset.Sidecars.Reverse().ToArray() }));
+    var metadata = Review() with { Provenance = new Dictionary<string, string> { [MediaSnapshot.ProvenanceKey] = stamp } };
+    using var store = new IndexStore(Path.Combine(Dir("snapshot-db"), "index.db"));
+    await store.SaveScanAsync(scan);
+    await store.SaveReviewAsync(asset.Id, metadata, asset.Fingerprint);
+    var originalSubtitle = File.ReadAllText(asset.Sidecars[0].Path);
+    var originalSubtitleTime = File.GetLastWriteTimeUtc(asset.Sidecars[0].Path);
+    File.AppendAllText(asset.Sidecars[0].Path, "changed subtitle");
+    var changed = await scanner.ScanAsync(scan.Root);
+    Assert(changed.Assets[0].Fingerprint == asset.Fingerprint);
+    Assert(MediaSnapshot.Fingerprint(changed.Assets[0]) != stamp);
+    await store.SaveScanAsync(changed);
+    Assert((await store.LoadReviewsAsync()).Count == 0, "Changed sidecar must not restore a stamped review");
+    try { await store.SaveReviewAsync(asset.Id, metadata, asset.Fingerprint); throw new Exception("Expected group snapshot rejection"); }
+    catch (InvalidOperationException ex) { Assert(ex.Message.Contains("media group changed", StringComparison.Ordinal)); }
+    File.WriteAllText(asset.Sidecars[0].Path, originalSubtitle);
+    File.SetLastWriteTimeUtc(asset.Sidecars[0].Path, originalSubtitleTime);
+    var restored = await scanner.ScanAsync(scan.Root);
+    Assert(MediaSnapshot.Fingerprint(restored.Assets[0]) == stamp);
+    await store.SaveScanAsync(restored);
+    Assert((await store.LoadReviewsAsync()).Count == 0, "Reappearing old sidecar snapshot cannot resurrect a withdrawn review");
+});
 Test("future SQLite schema rejected without destructive migration", () =>
 {
     var db = Path.Combine(Dir("future-db"), "index.db");

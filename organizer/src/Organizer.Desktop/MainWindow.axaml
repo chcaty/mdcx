@@ -1,171 +1,216 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Organizer.Desktop.ViewModels"
+        xmlns:local="using:Organizer.Desktop.Controls"
         x:Class="Organizer.Desktop.MainWindow"
-        Title="MDCx Organizer · 媒体整理工作台" Width="1480" Height="960"
-        MinWidth="1180" MinHeight="760" Background="#12171F">
-  <Grid RowDefinitions="64,62,*,6,162,30">
-    <Border Grid.Row="0" Background="#1A2029" BorderBrush="#303844" BorderThickness="0,0,0,1" Padding="20,10">
-      <Grid ColumnDefinitions="Auto,*,Auto">
-        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-          <Border Width="35" Height="35" Background="#7098DC" CornerRadius="8"><TextBlock Text="M" FontSize="23" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-          <StackPanel Spacing="1"><TextBlock Text="MDCx Organizer" FontSize="18" FontWeight="SemiBold" /><TextBlock Text="媒体整理工作台" Classes="caption" /></StackPanel>
-        </StackPanel>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-          <TextBlock Text="扫描 → 匹配 → 人工审核 → 计划预览" Classes="muted" VerticalAlignment="Center" />
-          <Border Background="#233A36" CornerRadius="4" Padding="10,5"><TextBlock Text="只读预览" Foreground="#99D1BE" FontWeight="SemiBold" /></Border>
+        Title="MDCx Organizer · 媒体整理" Width="1440" Height="900"
+        MinWidth="1160" MinHeight="740" Background="{StaticResource CanvasBrush}"
+        ExtendClientAreaToDecorationsHint="True" ExtendClientAreaChromeHints="NoChrome" ExtendClientAreaTitleBarHeightHint="32">
+  <Grid RowDefinitions="32,*,Auto,28">
+    <Border Grid.Row="0" Background="#EEF1EB" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" PointerPressed="DragTitleBar">
+      <Grid ColumnDefinitions="*,Auto,*">
+        <TextBlock Text="MDCx Organizer" FontWeight="SemiBold" FontSize="{DynamicResource FontSmall}" Foreground="{StaticResource InkBrush}" Margin="20,0" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Text="本地工作空间 · 离线样例" Classes="caption" VerticalAlignment="Center" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button Classes="icon" Width="40" Content="−" Click="MinimizeWindow" AutomationProperties.Name="最小化窗口" />
+          <Button Classes="icon" Width="40" Content="□" Click="MaximizeWindow" AutomationProperties.Name="最大化或还原窗口" />
+          <Button Classes="icon" Width="40" Click="CloseWindow" AutomationProperties.Name="关闭窗口"><local:WorkbenchIcon Kind="close" Width="15" Height="15" /></Button>
         </StackPanel>
       </Grid>
     </Border>
 
-    <Border Grid.Row="1" Background="#171D26" BorderBrush="#303844" BorderThickness="0,0,0,1" Padding="16,12">
-      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="9">
-        <Button Content="选择源文件夹…" Click="ChooseSource" IsEnabled="{Binding IsIdle}" ToolTip.Tip="选择要扫描的文件夹 · Ctrl+O" />
-        <TextBox Grid.Column="1" Text="{Binding SourcePath}" IsEnabled="{Binding IsIdle}" Watermark="源文件夹路径（只读扫描，不改动原文件）" AutomationProperties.Name="源文件夹路径" />
-        <Button Grid.Column="2" Classes="primary" Content="扫描文件" Command="{Binding ScanCommand}" ToolTip.Tip="F5" />
-        <Button Grid.Column="3" Content="取消" Command="{Binding CancelCommand}" ToolTip.Tip="Esc" />
-        <Button Grid.Column="4" Classes="subtle" Content="生成预览计划" Command="{Binding BuildPlanCommand}" ToolTip.Tip="Ctrl+P · 仅包含已审核文件" />
-      </Grid>
-    </Border>
-
-    <Grid Grid.Row="2" ColumnDefinitions="190,6,*,6,375" Margin="12,12,12,0">
-      <Border Grid.Column="0" Classes="panel">
-        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
-          <StackPanel Margin="14,15,14,16" Spacing="8">
-            <TextBlock Text="文件来源" Classes="section" />
-            <TextBlock Text="本地文件夹" Foreground="#A8C5F5" />
-            <TextBlock Text="{Binding SourcePath}" Classes="caption" TextWrapping="Wrap" MaxHeight="90" />
-          </StackPanel>
-          <Border Grid.Row="1" Height="1" Background="#303844" />
-          <StackPanel Grid.Row="2" Margin="6,14,6,8" Spacing="8">
-            <TextBlock Text="处理状态" Classes="caption" Margin="8,0" />
-            <ListBox ItemsSource="{Binding Filters}" SelectedItem="{Binding SelectedFilter}" Background="Transparent" BorderThickness="0" />
-          </StackPanel>
-          <StackPanel Grid.Row="4" Margin="14,14,14,16" Spacing="9">
-            <TextBlock Text="离线原型" Foreground="#C7AA76" FontWeight="SemiBold" />
-            <TextBlock Text="匹配使用虚构样例。&#10;不联网抓取，不下载海报。" Classes="caption" TextWrapping="Wrap" />
-            <Border Height="1" Background="#303844" Margin="0,3" />
-            <TextBlock Text="{Binding ReviewSummary}" Foreground="#99D1BE" />
-            <TextBlock Text="文件改名、移动与覆盖&#10;均未开放执行。" Classes="caption" TextWrapping="Wrap" />
-          </StackPanel>
-        </Grid>
-      </Border>
-      <GridSplitter Grid.Column="1" Width="6" Background="Transparent" />
-
-      <Border Grid.Column="2" Classes="panel">
-        <Grid RowDefinitions="52,*,30">
-          <Grid ColumnDefinitions="Auto,*,Auto" Margin="13,9" ColumnSpacing="12">
-            <TextBlock Text="媒体文件" Classes="section" VerticalAlignment="Center" />
-            <TextBox Grid.Column="1" x:Name="SearchBox" Text="{Binding Search}" Watermark="筛选文件名 / 标识    Ctrl+F" AutomationProperties.Name="筛选媒体文件" />
-            <TextBlock Grid.Column="2" Text="{Binding FileSummary}" Classes="caption" VerticalAlignment="Center" />
+    <Grid Grid.Row="1" ColumnDefinitions="178,*,359">
+      <Border Grid.Column="0" Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <Grid Margin="21,21,18,22" ColumnDefinitions="33,*" ColumnSpacing="11">
+            <Border Background="#2E523C" CornerRadius="9" Width="33" Height="33" VerticalAlignment="Top"><Path Data="M2 17 V3 L10 11 L18 3 V17" Stroke="#F1F5E9" StrokeThickness="2.3" Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+            <StackPanel Grid.Column="1" Spacing="1"><TextBlock Text="MDCx" FontSize="{DynamicResource FontHero}" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" /><TextBlock Text="媒体整理" Classes="caption" /></StackPanel>
           </Grid>
-          <DataGrid Grid.Row="1" x:Name="MediaGrid" ItemsSource="{Binding Assets}" SelectedItem="{Binding SelectedAsset, Mode=TwoWay}"
-                    AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="True" CanUserResizeColumns="True" HeadersVisibility="Column" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="文件名" Binding="{Binding Filename}" Width="*" MinWidth="180" />
-              <DataGridTextColumn Header="标识" Binding="{Binding Identifier}" Width="100" />
-              <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="83" />
-              <DataGridTextColumn Header="伴随文件" Binding="{Binding SidecarsText}" Width="112" />
-              <DataGridTextColumn Header="大小" Binding="{Binding SizeText}" Width="92" />
-            </DataGrid.Columns>
-          </DataGrid>
-          <StackPanel Grid.Row="1" IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="9">
-            <TextBlock Text="从一个文件夹开始" FontSize="20" Foreground="#BCC7D6" HorizontalAlignment="Center" />
-            <TextBlock Text="扫描媒体和字幕等伴随文件，逐项审核后预览整理路径。" Classes="muted" TextWrapping="Wrap" MaxWidth="350" TextAlignment="Center" />
-          </StackPanel>
-          <Border Grid.Row="2" Background="#202733" Padding="12,5" CornerRadius="0,0,7,7"><TextBlock Text="{Binding ScanSummary}" Classes="caption" /></Border>
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+              <TextBlock Text="工作空间" Classes="caption" Margin="22,0,0,10" />
+              <Button x:Name="MediaNav" Classes="nav active" Margin="10,0" Click="ShowMedia">
+                <Grid ColumnDefinitions="20,*,Auto" ColumnSpacing="10"><local:WorkbenchIcon Kind="stack" Width="19" Height="19" /><TextBlock Grid.Column="1" Text="媒体文件" FontWeight="SemiBold" /><TextBlock Grid.Column="2" Text="{Binding AllCount}" Classes="caption" VerticalAlignment="Center" /></Grid>
+              </Button>
+              <Button x:Name="PlanNav" Classes="nav" Margin="10,7,10,0" Click="ShowPlan">
+                <Grid ColumnDefinitions="20,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="4"><local:WorkbenchIcon Kind="eye" Width="19" Height="19" /><TextBlock Grid.Column="1" Text="整理预览" /><Border Grid.Column="2" Background="#E2EADB" CornerRadius="4" Padding="6,2"><TextBlock Text="{Binding ReviewedCount}" Classes="caption" /></Border><TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="仅已审核项" Classes="caption" /></Grid>
+              </Button>
+              <Border Classes="rule" Margin="22,17,22,18" />
+              <StackPanel Margin="22,0" Spacing="12">
+                <TextBlock Text="文件来源" Classes="caption" />
+                <StackPanel Orientation="Horizontal" Spacing="9"><local:WorkbenchIcon Kind="folder" Width="18" Height="18" /><TextBlock Text="本地文件夹" /></StackPanel>
+                <TextBlock Text="{Binding SourceFolderName}" Classes="caption" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SourcePath}" />
+                <Button Classes="flat" Content="查看完整路径     ›" HorizontalContentAlignment="Left" Margin="-5,-4,-5,0" Click="ShowSourcePath" />
+                <Button Content="更换文件夹" Click="ChooseSource" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch" ToolTip.Tip="Ctrl+O · 只读扫描" />
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="2" Margin="22,18,12,28" Orientation="Horizontal" Spacing="8"><local:WorkbenchIcon Kind="lock" Width="16" Height="16" /><TextBlock Text="本地工作空间" Classes="caption" /></StackPanel>
         </Grid>
       </Border>
-      <GridSplitter Grid.Column="3" Width="6" Background="Transparent" />
 
-      <Border Grid.Column="4" Classes="panel">
-        <Grid RowDefinitions="Auto,*">
-          <StackPanel Margin="14,13,14,10" Spacing="4">
-            <TextBlock Text="{Binding SelectedFilename}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-            <TextBlock Text="{Binding SelectedPath}" Classes="caption" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SelectedPath}" />
-          </StackPanel>
-          <TabControl Grid.Row="1" x:Name="InspectorTabs" Padding="0">
-            <TabItem Header="资料与候选">
-              <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="13,12,13,16" Spacing="12">
-                  <Grid ColumnDefinitions="82,*" ColumnSpacing="12">
-                    <Border Background="#252E3C" BorderBrush="#3D4B60" BorderThickness="1" CornerRadius="4" Height="108">
-                      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="6"><TextBlock Text="M" FontSize="29" FontWeight="Light" Foreground="#7995BF" HorizontalAlignment="Center" /><TextBlock Text="海报占位" FontSize="11" Foreground="#8C9CAF" /></StackPanel>
-                    </Border>
-                    <StackPanel Grid.Column="1" Spacing="9" VerticalAlignment="Center">
-                      <TextBlock Text="逐项核对，再做整理" FontWeight="SemiBold" />
-                      <TextBlock Text="候选显示来源与匹配证据。确认前请核对标识、标题和年份。" Classes="caption" TextWrapping="Wrap" />
-                      <Button Content="匹配离线样例" Command="{Binding MatchCommand}" HorizontalAlignment="Left" />
-                    </StackPanel>
-                  </Grid>
-                  <TextBlock Text="{Binding CandidateStatus}" Classes="caption" TextWrapping="Wrap" />
-                  <ListBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}" IsVisible="{Binding HasCandidates}" MaxHeight="160" Background="#141922" BorderBrush="#354151" BorderThickness="1" CornerRadius="4">
-                    <ListBox.ItemTemplate>
-                      <DataTemplate DataType="vm:CandidateRow">
-                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="3">
-                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Grid.Column="1" Text="{Binding Confidence}" Foreground="#A5C3F4" />
-                          <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Detail}" Classes="caption" TextWrapping="Wrap" />
-                        </Grid>
-                      </DataTemplate>
-                    </ListBox.ItemTemplate>
-                  </ListBox>
-                  <Button Content="采用所选候选并确认" Command="{Binding AcceptCandidateCommand}" IsVisible="{Binding HasCandidates}" HorizontalAlignment="Stretch" />
-                  <TextBlock Text="{Binding SelectedCandidateReviewReasons}" IsVisible="{Binding HasCandidateReviewReasons}" Foreground="#D6B88D" FontSize="11" TextWrapping="Wrap" MaxHeight="60" />
-                  <TextBlock Text="候选须经人工确认，才会加入整理计划。" IsVisible="{Binding HasCandidates}" Classes="caption" TextWrapping="Wrap" />
-                  <Border Height="1" Background="#303844" />
-                  <Grid ColumnDefinitions="*,78" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="6" IsEnabled="{Binding HasSelection}">
-                    <TextBlock Text="标识" Classes="caption" /><TextBlock Grid.Column="1" Text="年份" Classes="caption" />
-                    <TextBox Grid.Row="1" Text="{Binding EditorIdentifier}" Watermark="例如 DEMO-001" AutomationProperties.Name="媒体标识" />
-                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding EditorYear}" Watermark="可留空" AutomationProperties.Name="媒体年份" />
-                    <TextBlock Grid.Row="2" Text="标题" Classes="caption" Margin="0,4,0,0" />
-                    <TextBox Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding EditorTitle}" Watermark="填写或修正标题" AutomationProperties.Name="媒体标题" />
-                  </Grid>
-                  <Button Classes="primary" Content="确认人工审核" Command="{Binding SaveReviewCommand}" HorizontalAlignment="Stretch" ToolTip.Tip="Ctrl+Enter · 编辑字段后需重新确认" />
-                  <Expander Header="来源证据与审核原因" IsVisible="{Binding HasCandidates}" HorizontalAlignment="Stretch">
-                    <StackPanel Spacing="8">
-                      <TextBlock Text="{Binding SelectedCandidateReviewReasons}" Foreground="#D6B88D" FontSize="11" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding SelectedCandidateUrl}" Classes="caption" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding SelectedCandidateProvenance}" Classes="caption" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </Expander>
-                  <Expander Header="伴随文件与扫描提示" HorizontalAlignment="Stretch">
-                    <StackPanel Spacing="8"><TextBlock Text="{Binding SelectedSidecars}" Classes="caption" TextWrapping="Wrap" /><TextBlock Text="{Binding SelectedWarnings}" Classes="caption" TextWrapping="Wrap" /></StackPanel>
-                  </Expander>
-                </StackPanel>
+      <ScrollViewer Grid.Column="1" x:Name="CenterScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+      <Grid x:Name="CenterWorkspace" Margin="24,20,20,30">
+        <Grid x:Name="MediaWorkspace" RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
+          <Border Grid.Row="0" MinHeight="72" BorderBrush="#E2E7DC" BorderThickness="0,0,0,1" Padding="0,0,0,14">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="5"><TextBlock Text="媒体整理" FontSize="{DynamicResource FontPage}" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" /><TextBlock Text="{Binding ScanSummary}" Classes="caption" /></StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                <Button Command="{Binding ScanCommand}" ToolTip.Tip="F5 · 只读扫描媒体及伴随文件"><StackPanel Orientation="Horizontal" Spacing="8"><local:WorkbenchIcon Kind="scan" Width="17" Height="17" /><TextBlock Text="扫描文件" /></StackPanel></Button>
+                <Button Command="{Binding MatchCheckedCommand}" ToolTip.Tip="识别勾选文件；结果仍需逐项人工核对"><StackPanel Orientation="Horizontal" Spacing="8"><local:WorkbenchIcon Kind="spark" Width="17" Height="17" /><TextBlock Text="识别所选" /><TextBlock Text="{Binding CheckedCount, StringFormat='· {0}'}" /></StackPanel></Button>
+              </StackPanel>
+            </Grid>
+          </Border>
+          <Grid Grid.Row="1" x:Name="FilterBar" ColumnDefinitions="*,Auto" ColumnSpacing="18" Margin="0,16,0,14">
+            <Border x:Name="FilterGroup" Background="#EDF1E7" CornerRadius="6" Padding="3" HorizontalAlignment="Left"><StackPanel Orientation="Horizontal">
+              <Button x:Name="FilterAll" Classes="filter active" Tag="全部文件" Click="ChangeFilter"><StackPanel Orientation="Horizontal" Spacing="4"><TextBlock Text="全部" /><TextBlock Text="{Binding AllCount}" /></StackPanel></Button>
+              <Button x:Name="FilterPending" Classes="filter" Tag="待审核" Click="ChangeFilter"><StackPanel Orientation="Horizontal" Spacing="4"><TextBlock Text="待审核" /><TextBlock Text="{Binding PendingCount}" /></StackPanel></Button>
+              <Button x:Name="FilterReviewed" Classes="filter" Tag="已审核" Click="ChangeFilter"><StackPanel Orientation="Horizontal" Spacing="4"><TextBlock Text="已审核" /><TextBlock Text="{Binding ReviewedCount}" /></StackPanel></Button>
+              <Button x:Name="FilterAttention" Classes="filter" Tag="需检查" Click="ChangeFilter"><StackPanel Orientation="Horizontal" Spacing="4"><TextBlock Text="需检查" /><TextBlock Text="{Binding NeedsAttentionCount}" /></StackPanel></Button>
+            </StackPanel></Border>
+            <TextBox Grid.Column="1" x:Name="SearchBox" Text="{Binding Search}" Watermark="搜索片名、文件名或番号" HorizontalAlignment="Right" Width="298" MinWidth="125" ToolTip.Tip="Ctrl+F · 筛选本地文件" AutomationProperties.Name="搜索片名文件名或番号" />
+          </Grid>
+          <Border Grid.Row="2" Background="#F0F4EA" BorderBrush="#DBE5D1" BorderThickness="1,1,1,0" CornerRadius="7,7,0,0" Padding="13,5" MinHeight="38">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="13">
+              <TextBlock Text="{Binding CheckedSummary}" FontSize="{DynamicResource FontSmall}" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Classes="flat" Content="清除" Command="{Binding ClearCheckedCommand}" />
+              <TextBlock Grid.Column="2" Text="{Binding BatchWarning}" Foreground="#7E6C44" FontSize="{DynamicResource FontSmall}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding BatchWarning}" VerticalAlignment="Center" />
+              <Button Grid.Column="3" Content="逐项审核" Command="{Binding StartReviewCommand}" MinHeight="27" Padding="17,3" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
+            </Grid>
+          </Border>
+          <Border Grid.Row="3" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="White" MinHeight="150">
+            <Grid RowDefinitions="35,*">
+              <Border Background="#F5F7F0" Padding="10,0,13,0"><Grid ColumnDefinitions="32,*,170,172" ColumnSpacing="0">
+                <CheckBox IsChecked="{Binding VisibleCheckState, Mode=OneWay}" Click="ToggleVisibleChecks" IsThreeState="False" VerticalAlignment="Center" AutomationProperties.Name="勾选或清除当前筛选内的文件" ToolTip.Tip="仅选择当前可见文件，不确认资料" />
+                <TextBlock Grid.Column="1" Text="媒体文件" Classes="caption" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="格式 / 字幕" Classes="caption" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="3" Text="审核状态" Classes="caption" VerticalAlignment="Center" />
+              </Grid></Border>
+              <ListBox Grid.Row="1" x:Name="MediaGrid" Classes="media" ItemsSource="{Binding Assets}" SelectedItem="{Binding SelectedAsset, Mode=TwoWay}" SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="媒体文件列表；行选择查看资料，复选框用于批量队列">
+                <ListBox.ItemTemplate><DataTemplate DataType="vm:AssetRow">
+                  <Border BorderBrush="#E6ECDE" BorderThickness="0,0,0,1" Padding="9,4,12,4" MinHeight="74">
+                    <Grid ColumnDefinitions="32,*,170,172">
+                      <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.Name="{Binding Filename, StringFormat='勾选 {0}'}" />
+                      <Grid Grid.Column="1" ColumnDefinitions="37,*" ColumnSpacing="16" Margin="0,0,12,0">
+                        <local:MediaPoster Kind="{Binding ThumbnailKind}" Width="37" Height="56" VerticalAlignment="Center" ToolTip.Tip="本地抽象示意图，不是来源海报" />
+                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding DisplayTitle}" FontWeight="SemiBold" FontSize="{DynamicResource FontTitle}" Foreground="{StaticResource InkBrush}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayTitle}" />
+                          <TextBlock Text="{Binding Filename}" FontSize="{DynamicResource FontSmall}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SourcePath}" />
+                          <TextBlock Text="{Binding MetadataSummary}" Classes="caption" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding MetadataSummary}" />
+                        </StackPanel>
+                      </Grid>
+                      <StackPanel Grid.Column="2" Spacing="13" VerticalAlignment="Center" Margin="0,0,12,0"><Grid ColumnDefinitions="Auto,*" ColumnSpacing="6"><TextBlock Text="{Binding FormatText}" FontSize="{DynamicResource FontSmall}" /><TextBlock Grid.Column="1" Text="{Binding ResolutionText}" Classes="tiny" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding ResolutionText}" /></Grid><TextBlock Text="{Binding SidecarsText}" Classes="caption" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SidecarsText}" /></StackPanel>
+                      <StackPanel Grid.Column="3" Spacing="7" VerticalAlignment="Center"><Border Classes="pill" Background="{Binding StatusText, Converter={StaticResource StatusFill}}"><TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusText, Converter={StaticResource StatusInk}}" FontSize="{DynamicResource FontSmall}" /></Border><TextBlock Text="{Binding EvidenceSummary}" Classes="tiny" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding EvidenceSummary}" /></StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate></ListBox.ItemTemplate>
+              </ListBox>
+              <Border Grid.Row="1" IsVisible="{Binding Assets.Count, Converter={StaticResource IsZero}}" HorizontalAlignment="Center" VerticalAlignment="Center"><StackPanel IsVisible="{Binding !IsEmpty}" Spacing="12"><TextBlock Text="没有符合筛选条件的文件" Classes="section" TextWrapping="Wrap" /><Button Content="清除筛选" Command="{Binding ClearFilterCommand}" HorizontalAlignment="Center" /></StackPanel></Border>
+              <StackPanel Grid.Row="1" IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" Margin="20">
+                <local:WorkbenchIcon Kind="folder" Width="35" Height="35" HorizontalAlignment="Center" />
+                <TextBlock Text="从一个文件夹开始" Classes="section" HorizontalAlignment="Center" />
+                <TextBlock Text="只读扫描媒体与字幕，核对资料后预览整理路径。" Classes="caption" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="340" />
+                <Button Content="选择媒体文件夹" Click="ChooseSource" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+          </Border>
+          <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,10,0,0" MinHeight="22">
+            <TextBlock Text="{Binding SelectedDisplayTitle, StringFormat='正在查看  {0}'}" Classes="caption" TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Column="1" Text="勾选用于批量操作 · 点击行查看资料" Classes="tiny" Margin="12,0,0,0" />
+          </Grid>
+          <Grid Grid.Row="5" ColumnDefinitions="Auto,Auto,*" Margin="0,7,0,8" ColumnSpacing="14">
+            <TextBlock Text="{Binding DraftLabel}" Classes="section" VerticalAlignment="Center" />
+            <Border Grid.Column="1" Classes="pill" Background="{Binding SelectedAsset.StatusText, Converter={StaticResource StatusFill}}"><TextBlock Text="{Binding SelectedAsset.StatusText}" FontSize="{DynamicResource FontSmall}" Foreground="{Binding SelectedAsset.StatusText, Converter={StaticResource StatusInk}}" /></Border>
+            <TextBlock Grid.Column="2" Text="{Binding SelectedSidecarCount, StringFormat='媒体 + 伴随文件 · 字幕等 {0} 项'}" Classes="caption" HorizontalAlignment="Right" VerticalAlignment="Center" />
+          </Grid>
+          <Border Grid.Row="6" Classes="panel" MinHeight="210" MaxHeight="260">
+            <Grid RowDefinitions="Auto,*,Auto">
+              <Border Background="#F3F6EE" CornerRadius="7,7,0,0" Padding="14,7"><Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10">
+                <local:WorkbenchIcon Kind="folder" Width="17" Height="17" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="目标目录" Classes="caption" VerticalAlignment="Center" />
+                <Button Grid.Column="2" Classes="flat" HorizontalAlignment="Left" Click="ShowTargetPath" ToolTip.Tip="{Binding TargetPath}"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{Binding TargetFolderName}" /><TextBlock Text="完整路径  ›" Foreground="#557747" /></StackPanel></Button>
+                <TextBlock Grid.Column="3" Text="{Binding DraftStatus}" Classes="tiny" MaxWidth="230" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DraftStatus}" VerticalAlignment="Center" />
+              </Grid></Border>
+              <ScrollViewer Grid.Row="1" Margin="17,11,17,4" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,32,1.2*" ColumnSpacing="12" RowSpacing="9">
+                  <TextBlock Text="原始文件" Classes="caption" /><TextBlock Grid.Column="2" Text="拟整理结果" Classes="caption" />
+                  <StackPanel Grid.Row="1" Spacing="14"><TextBlock Text="{Binding SelectedFilename}" FontSize="{DynamicResource FontSmall}" TextWrapping="Wrap" ToolTip.Tip="{Binding SelectedPath}" /><TextBlock Text="{Binding SelectedSidecars}" Classes="caption" TextWrapping="Wrap" /></StackPanel>
+                  <Border Grid.Row="1" Grid.Column="1" BorderBrush="#DFE8D6" BorderThickness="1,0,0,0"><Border Background="#F7FAF2" BorderBrush="#D9E5CD" BorderThickness="1" CornerRadius="15" Width="30" Height="30" VerticalAlignment="Center" Margin="-15,0,0,0"><local:WorkbenchIcon Kind="arrow" Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border></Border>
+                  <StackPanel Grid.Row="1" Grid.Column="2" Spacing="6">
+                    <Grid IsVisible="{Binding HasDraft}" ColumnDefinitions="16,*" ColumnSpacing="6"><local:WorkbenchIcon Kind="folder" Width="15" Height="15" /><TextBlock Grid.Column="1" Text="{Binding DraftOperations[0].Target, Converter={StaticResource PathLeaf}, ConverterParameter=parent}" FontSize="{DynamicResource FontTiny}" TextWrapping="Wrap" /></Grid>
+                    <ItemsControl ItemsSource="{Binding DraftOperations}"><ItemsControl.ItemTemplate><DataTemplate DataType="vm:PlanRow"><Border Background="#EFF4E8" CornerRadius="3" Padding="5,3" Margin="0,0,0,5"><TextBlock Text="{Binding Target, Converter={StaticResource PathLeaf}}" FontSize="{DynamicResource FontTiny}" TextWrapping="Wrap" ToolTip.Tip="{Binding Target}" /></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                    <TextBlock Text="{Binding DraftIssues}" IsVisible="{Binding HasDraftIssues}" Foreground="#845935" FontSize="{DynamicResource FontSmall}" TextWrapping="Wrap" />
+                    <TextBlock Text="填写或选择资料后，显示拟议名称。" IsVisible="{Binding !HasDraft}" Classes="caption" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Grid>
               </ScrollViewer>
-            </TabItem>
-            <TabItem Header="整理计划">
-              <Grid RowDefinitions="Auto,*" Margin="13,12,13,13">
-                <StackPanel Spacing="9">
-                  <TextBlock Text="目标目录" Classes="caption" />
-                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6"><TextBox Text="{Binding TargetPath}" Watermark="选择或输入目标目录" AutomationProperties.Name="整理目标目录" /><Button Grid.Column="1" Content="…" Click="ChooseTarget" IsEnabled="{Binding IsIdle}" ToolTip.Tip="选择目标文件夹" /></Grid>
-                  <TextBlock Text="规则：标识 - 标题（年份）/ 同名媒体。伴随文件保持关联。" Classes="caption" TextWrapping="Wrap" />
-                  <Button Content="检查并生成计划" Classes="primary" Command="{Binding BuildPlanCommand}" HorizontalAlignment="Stretch" />
-                  <TextBlock Text="{Binding PlanStatus}" Foreground="#B4CFF7" TextWrapping="Wrap" />
-                  <TextBlock Text="{Binding PlanIssues}" Foreground="#E5B391" IsVisible="{Binding HasPlanIssues}" TextWrapping="Wrap" MaxHeight="150" />
-                  <TextBlock Text="此版本仅生成计划，不执行文件操作。" Classes="caption" TextWrapping="Wrap" Margin="0,0,0,10" />
-                </StackPanel>
-                <ListBox Grid.Row="1" ItemsSource="{Binding PlanOperations}" Background="#151A22" BorderThickness="0">
-                  <ListBox.ItemTemplate><DataTemplate DataType="vm:PlanRow"><StackPanel Spacing="4"><TextBlock Text="{Binding Kind}" Foreground="#9EBFEF" FontSize="11" /><TextBlock Text="{Binding Source}" Classes="caption" TextWrapping="Wrap" /><TextBlock Text="↓" Foreground="#62748E" /><TextBlock Text="{Binding Target}" TextWrapping="Wrap" FontSize="12" /><Border Height="1" Background="#303844" Margin="0,6,0,0" /></StackPanel></DataTemplate></ListBox.ItemTemplate>
-                </ListBox>
+              <Grid Grid.Row="2" ColumnDefinitions="*,*" Margin="17,4,17,12" ColumnSpacing="18"><Button Classes="flat" HorizontalAlignment="Left" Click="ShowSelectedPath" Content="查看原文件完整路径  ›" /><TextBlock Grid.Column="1" Text="遇到重名时阻止该组计划，保留现有文件。" Classes="tiny" TextWrapping="Wrap" VerticalAlignment="Center" /></Grid>
+            </Grid>
+          </Border>
+        </Grid>
+
+        <Grid x:Name="PlanWorkspace" IsVisible="False" RowDefinitions="Auto,Auto,Auto,*">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,22"><StackPanel Spacing="6"><TextBlock Text="整理预览" FontSize="{DynamicResource FontPage}" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" /><TextBlock Text="仅包含明确审核通过的媒体及其伴随文件。" Classes="caption" /></StackPanel><Button Grid.Column="1" Content="检查并生成计划" Command="{Binding BuildPlanCommand}" VerticalAlignment="Center" /></Grid>
+          <Border Grid.Row="1" Classes="panel" Padding="15" Margin="0,0,0,16"><StackPanel Spacing="10"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="目标目录" FontWeight="SemiBold" /><Button Grid.Column="1" Classes="flat" Content="更换目录" Click="ChooseTarget" /></Grid><TextBox Text="{Binding TargetPath}" IsEnabled="{Binding IsIdle}" Watermark="选择或输入目标目录" AutomationProperties.Name="整理预览目标目录完整路径" /><TextBlock Text="{Binding PlanStatus}" Foreground="#55763E" TextWrapping="Wrap" /><TextBlock Text="{Binding PlanIssues}" IsVisible="{Binding HasPlanIssues}" Foreground="#845935" TextWrapping="Wrap" /><TextBlock Text="此版本仅预览，不执行改名、移动或覆盖。" Classes="caption" /></StackPanel></Border>
+          <TextBlock Grid.Row="2" Text="已审核文件的拟议路径" Classes="section" Margin="0,0,0,10" />
+          <Border Grid.Row="3" Classes="panel"><ScrollViewer><ItemsControl ItemsSource="{Binding PlanOperations}" Margin="15"><ItemsControl.ItemTemplate><DataTemplate DataType="vm:PlanRow"><StackPanel Spacing="6" Margin="0,0,0,18"><TextBlock Text="{Binding Kind}" FontWeight="SemiBold" /><TextBlock Text="{Binding Source}" Classes="caption" TextWrapping="Wrap" /><TextBlock Text="↓" Foreground="#789068" /><TextBlock Text="{Binding Target}" TextWrapping="Wrap" FontSize="{DynamicResource FontSmall}" /><Border Classes="rule" Margin="0,7,0,0" /></StackPanel></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer></Border>
+        </Grid>
+      </Grid>
+      </ScrollViewer>
+
+      <Border Grid.Column="2" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="1,0,0,0">
+        <Grid RowDefinitions="Auto,*,Auto" Margin="24,20,24,30">
+          <Border BorderBrush="#E7EDDF" BorderThickness="0,0,0,1" Padding="0,0,0,13" Margin="0,0,0,16">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto"><TextBlock x:Name="InspectorTitle" Text="资料核对" FontWeight="SemiBold" FontSize="{DynamicResource FontSection}" Foreground="{StaticResource InkBrush}" VerticalAlignment="Center" /><Button Grid.Column="1" Classes="icon" Command="{Binding PreviousAssetCommand}" AutomationProperties.Name="查看上一个媒体"><local:WorkbenchIcon Kind="left" Width="16" Height="16" /></Button><TextBlock Grid.Column="2" Text="{Binding SelectionPosition}" Classes="caption" VerticalAlignment="Center" Margin="7,0" /><Button Grid.Column="3" Classes="icon" Command="{Binding NextAssetCommand}" AutomationProperties.Name="查看下一个媒体"><local:WorkbenchIcon Kind="right" Width="16" Height="16" /></Button></Grid>
+          </Border>
+          <ScrollViewer Grid.Row="1" x:Name="InspectorScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+            <StackPanel Spacing="14" MaxWidth="302" HorizontalAlignment="Stretch">
+              <Grid ColumnDefinitions="104,*" ColumnSpacing="18">
+                <local:MediaPoster Kind="{Binding SelectedAsset.ThumbnailKind}" Width="104" Height="156" ToolTip.Tip="本地抽象示意图，不是抓取的真实海报" />
+                <StackPanel Grid.Column="1" Spacing="8"><TextBlock x:Name="CandidatePositionText" Text="{Binding SelectedCandidatePosition}" Classes="caption" TextWrapping="Wrap" /><TextBlock x:Name="PlanCandidatePositionText" IsVisible="False" Text="人工审核记录" Classes="caption" /><TextBlock Text="{Binding SelectedDisplayTitle}" Foreground="{StaticResource InkBrush}" FontSize="{DynamicResource FontHero}" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="160" HorizontalAlignment="Left" /><TextBlock Text="{Binding SelectedMetadataSummary}" Classes="caption" TextWrapping="Wrap" /><TextBlock Text="本地示意图 · 离线样例" Classes="tiny" TextWrapping="Wrap" /></StackPanel>
               </Grid>
-            </TabItem>
-          </TabControl>
+              <Border IsVisible="{Binding HasEvidence}" Background="#F2F7EA" BorderBrush="#E0E9D6" BorderThickness="1" CornerRadius="7" Padding="14,12">
+                <StackPanel Spacing="8"><Grid ColumnDefinitions="20,*" ColumnSpacing="9"><local:WorkbenchIcon Kind="checkcircle" Width="19" Height="19" /><TextBlock Grid.Column="1" Text="{Binding SelectedEvidenceSummary}" FontWeight="SemiBold" FontSize="{DynamicResource FontMedium}" Foreground="#4A6E32" TextWrapping="Wrap" /></Grid><TextBlock x:Name="EvidenceExplanation" Text="候选仍需人工核对；来源证据不代表自动审核。" FontSize="{DynamicResource FontSmall}" Foreground="#557141" TextWrapping="Wrap" /></StackPanel>
+              </Border>
+              <Grid ColumnDefinitions="*,Auto" Margin="0,1,0,-7"><TextBlock Text="资料" FontWeight="SemiBold" VerticalAlignment="Center" /><Button Grid.Column="1" x:Name="EditToggle" Classes="flat" Click="ToggleEditor" IsEnabled="{Binding HasSelection}"><StackPanel Orientation="Horizontal" Spacing="7"><local:WorkbenchIcon Kind="edit" Width="15" Height="15" /><TextBlock Text="编辑" /></StackPanel></Button></Grid>
+              <StackPanel Spacing="0">
+                <Border BorderBrush="#E9EFDF" BorderThickness="0,0,0,1" Padding="0,9,0,12"><Grid ColumnDefinitions="74,*"><TextBlock Text="片名" Classes="caption" /><TextBlock Grid.Column="1" Text="{Binding EditorTitle}" TextWrapping="Wrap" /></Grid></Border>
+                <Border BorderBrush="#E9EFDF" BorderThickness="0,0,0,1" Padding="0,10,0,12"><Grid ColumnDefinitions="74,*"><TextBlock Text="年份" Classes="caption" /><TextBlock Grid.Column="1" Text="{Binding EditorYear}" /></Grid></Border>
+                <Border BorderBrush="#E9EFDF" BorderThickness="0,0,0,1" Padding="0,10,0,12"><Grid ColumnDefinitions="74,*"><TextBlock Text="影片番号" Classes="caption" /><TextBlock Grid.Column="1" Text="{Binding SelectedCatalogIdentifier}" TextWrapping="Wrap" /></Grid></Border>
+                <Grid x:Name="EditorPanel" IsVisible="False" ColumnDefinitions="*,88" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="9" RowSpacing="6" Margin="0,12" IsEnabled="{Binding HasSelection}">
+                  <TextBlock Text="整理标识" Classes="caption" /><TextBlock Grid.Column="1" Text="年份" Classes="caption" />
+                  <TextBox Grid.Row="1" Text="{Binding EditorIdentifier}" Watermark="来源 ID 或影片番号" AutomationProperties.Name="人工编辑整理标识" /><TextBox Grid.Row="1" Grid.Column="1" Text="{Binding EditorYear}" Watermark="可留空" AutomationProperties.Name="人工编辑年份" />
+                  <TextBlock Grid.Row="2" Text="片名" Classes="caption" /><TextBox Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding EditorTitle}" Watermark="填写或修正片名" AutomationProperties.Name="人工编辑片名" />
+                  <Button Grid.Row="4" Grid.ColumnSpan="2" Classes="flat" Content="撤销未确认修改" Command="{Binding UndoEditsCommand}" HorizontalAlignment="Right" />
+                </Grid>
+              </StackPanel>
+              <Expander Header="来源证据" IsExpanded="False" Margin="0,-8,0,-5">
+                <StackPanel Spacing="8"><TextBlock Text="{Binding SelectedSourceId, StringFormat='来源站内 ID：{0}'}" Classes="caption" TextWrapping="Wrap" /><TextBlock Text="{Binding SelectedCatalogIdentifier, StringFormat='影片番号：{0}'}" Classes="caption" TextWrapping="Wrap" /><TextBlock Text="{Binding SelectedCandidateUrl}" Classes="tiny" TextWrapping="Wrap" /><TextBlock Text="{Binding SelectedCandidateReviewReasons}" Foreground="#845935" FontSize="{DynamicResource FontSmall}" TextWrapping="Wrap" /><TextBlock Text="{Binding SelectedCandidateProvenance}" Classes="tiny" TextWrapping="Wrap" /></StackPanel>
+              </Expander>
+              <Expander x:Name="SearchDetails" Header="检索方式与候选" Margin="0,-8,0,-5">
+                <StackPanel Spacing="8" Margin="0,3,0,8"><TextBlock Text="只查询随应用提供的虚构离线样例。" Classes="tiny" TextWrapping="Wrap" /><Grid ColumnDefinitions="*,*" ColumnSpacing="8"><ComboBox ItemsSource="{Binding SearchModes}" SelectedItem="{Binding SelectedSearchMode}" AutomationProperties.Name="标题或番号检索模式" /><ComboBox Grid.Column="1" ItemsSource="{Binding MatchSources}" SelectedItem="{Binding SelectedMatchSource}" AutomationProperties.Name="候选资料来源" /></Grid><TextBox Text="{Binding MatchQuery}" Watermark="输入标题或影片番号" AutomationProperties.Name="候选检索查询" /><Button Content="检索当前文件" Command="{Binding MatchCommand}" HorizontalAlignment="Stretch" /><TextBlock Text="{Binding CandidateStatus}" Classes="caption" TextWrapping="Wrap" /><ListBox Classes="candidates" ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}" IsVisible="{Binding HasCandidates}" MaxHeight="210"><ListBox.ItemTemplate><DataTemplate DataType="vm:CandidateRow"><StackPanel Spacing="4"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" /><TextBlock Text="{Binding Detail}" Classes="tiny" TextWrapping="Wrap" /><TextBlock Text="{Binding Confidence}" Classes="tiny" TextWrapping="Wrap" /></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox></StackPanel>
+              </Expander>
+              <Border Classes="rule" Margin="0,-5,0,0" />
+              <StackPanel Spacing="10"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="伴随文件" FontWeight="SemiBold" /><Border Background="#EEF4E5" CornerRadius="4" Padding="7,2"><TextBlock Text="{Binding SelectedSidecarCount}" Classes="tiny" /></Border></StackPanel><Grid ColumnDefinitions="19,*" ColumnSpacing="10"><local:WorkbenchIcon Kind="sub" Width="18" Height="18" /><TextBlock Grid.Column="1" Text="{Binding SelectedSidecars}" Classes="caption" TextWrapping="Wrap" /></Grid><TextBlock Text="{Binding SelectedWarnings}" IsVisible="{Binding SelectedWarnings, Converter={StaticResource HasWarning}}" Classes="tiny" TextWrapping="Wrap" /><Button Classes="flat" Content="查看文件完整路径  ›" Click="ShowSelectedPath" HorizontalAlignment="Left" /></StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+          <Border Grid.Row="2" x:Name="ReviewActions" BorderBrush="#E4ECD9" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,12">
+            <StackPanel Spacing="12"><TextBlock Text="{Binding ReviewQueueSummary}" IsVisible="{Binding IsReviewing}" Classes="caption" TextWrapping="Wrap" /><TextBlock Text="确认后，才会加入整理预览。" Classes="caption" TextWrapping="Wrap" /><Button Classes="primary" Command="{Binding ConfirmAndNextCommand}" HorizontalAlignment="Stretch" ToolTip.Tip="Ctrl+Enter · 仅确认当前显示资料；不会批量接受"><Grid ColumnDefinitions="20,*,20" ColumnSpacing="10"><local:WorkbenchIcon Kind="check" Width="18" Height="18" Stroke="White" /><TextBlock Grid.Column="1" Text="确认并下一项" Foreground="White" HorizontalAlignment="Center" /><TextBlock Grid.Column="2" Text="↵" Foreground="#DCE8D2" /></Grid></Button><Button Classes="flat" Content="退出逐项审核" Command="{Binding EndReviewCommand}" IsVisible="{Binding IsReviewing}" HorizontalAlignment="Center" /></StackPanel>
+          </Border>
+          <Border Grid.Row="2" x:Name="PlanInspectorFooter" IsVisible="False" BorderBrush="#E4ECD9" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,12"><StackPanel Spacing="12"><TextBlock x:Name="PlanInspectorNote" Text="整理计划仅包含已审核项。" Classes="caption" TextWrapping="Wrap" /><Button Content="返回媒体文件" Click="ShowMedia" HorizontalAlignment="Stretch" /></StackPanel></Border>
         </Grid>
       </Border>
     </Grid>
-    <GridSplitter Grid.Row="3" Height="6" HorizontalAlignment="Stretch" Background="Transparent" />
-    <Border Grid.Row="4" Classes="panel" Margin="12,0,12,9">
-      <Grid RowDefinitions="35,*">
-        <Grid ColumnDefinitions="Auto,*,Auto" Margin="13,8"><TextBlock Text="任务与日志" Classes="section" /><TextBlock Grid.Column="2" Text="{Binding IndexStatus}" Classes="caption" /></Grid>
-        <ListBox Grid.Row="1" ItemsSource="{Binding Logs}" Background="Transparent" BorderThickness="0" FontSize="12">
-          <ListBox.ItemTemplate><DataTemplate DataType="vm:LogEntry"><Grid ColumnDefinitions="72,46,*" ColumnSpacing="10"><TextBlock Text="{Binding Time}" Classes="caption" /><TextBlock Grid.Column="1" Text="{Binding Level}" Foreground="#9FBCE5" /><TextBlock Grid.Column="2" Text="{Binding Message}" TextWrapping="Wrap" /></Grid></DataTemplate></ListBox.ItemTemplate>
-        </ListBox>
-      </Grid>
+
+    <Border Grid.Row="2" x:Name="LogsPanel" IsVisible="False" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" MaxHeight="190" Padding="18,10">
+      <Grid RowDefinitions="Auto,*"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="任务日志" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="{Binding IndexStatus}" Classes="caption" /></Grid><ListBox Grid.Row="1" ItemsSource="{Binding Logs}" Background="Transparent" BorderThickness="0" Margin="0,8,0,0" MaxHeight="135"><ListBox.ItemTemplate><DataTemplate DataType="vm:LogEntry"><Grid ColumnDefinitions="70,50,*" ColumnSpacing="10"><TextBlock Text="{Binding Time}" Classes="tiny" /><TextBlock Grid.Column="1" Text="{Binding Level}" Classes="tiny" Foreground="#55763E" /><TextBlock Grid.Column="2" Text="{Binding Message}" Classes="tiny" TextWrapping="Wrap" /></Grid></DataTemplate></ListBox.ItemTemplate></ListBox></Grid>
     </Border>
-    <Border Grid.Row="5" Background="#1C2635" Padding="15,5">
-      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10"><ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Width="80" Height="3" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="{Binding Status}" FontSize="11" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="2" Text="F5 扫描   ·   Esc 取消   ·   Ctrl+Enter 审核" FontSize="11" Foreground="#A1B2CA" /></Grid>
+    <Border Grid.Row="3" Background="#EEF3E7" BorderBrush="#DCE6D0" BorderThickness="0,1,0,0" Padding="16,0,10,0">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="14">
+        <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Width="48" Height="3" VerticalAlignment="Center" Foreground="#739656" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center"><TextBlock Text="{Binding Status}" Classes="tiny" MaxWidth="530" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Status}" /><Border Width="1" Background="#D3E0C6" Height="13" /><local:WorkbenchIcon Kind="eye" Width="15" Height="15" /><TextBlock Text="只读预览 · 尚未改动文件" Classes="tiny" Foreground="#587345" /></StackPanel>
+        <Button Grid.Column="2" Classes="flat" Content="取消任务 · Esc" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" />
+        <Button Grid.Column="3" Classes="flat" Click="ToggleLogs" AutomationProperties.Name="展开或收起任务日志"><StackPanel Orientation="Horizontal" Spacing="8"><local:WorkbenchIcon Kind="log" Width="15" Height="15" /><TextBlock Text="任务日志" Classes="tiny" Foreground="#587345" /><local:WorkbenchIcon Kind="up" Width="13" Height="13" /></StackPanel></Button>
+      </Grid>
     </Border>
   </Grid>
 </Window>

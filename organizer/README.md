@@ -6,7 +6,7 @@ A new native **Avalonia + .NET 10** media-file workbench, kept separate from the
 
 - Choose a source directory and scan recursively without following symbolic links/reparse points.
 - Keep each video/version as a separate asset. Recognize common catalog IDs, attach unambiguous named subtitles/sidecars, and surface missing/ambiguous identifiers. Equal IDs are not treated as proof of duplicate content.
-- Dense native workbench: source/status panel, virtualized file grid, metadata/candidate/plan inspector, task log; filtering, keyboard shortcuts, cancellation and stale-result protection.
+- Approved warm-neutral/deep-green native workbench: virtualized media rows, independent checked batch and focused inspector, sequential review, unreviewed naming drafts and reviewed-only preview, collapsed logs, filtering and keyboard navigation.
 - Run the isolated Python worker against hand-authored, structure-inspired neutral HTML/JSON fixtures; inspect evidence, provenance, ambiguity and source fallback. Every candidate in normal interactive mode needs a human click to accept. Manual correction is supported.
 - Persist the scan index, reviewed metadata and dry-run plans in a versioned application-owned SQLite database. Changed source fingerprints invalidate old reviews. Repeated plans are idempotent by content ID.
 - Preview deterministic target filenames and preserved subtitle language suffixes; block collisions, existing targets, unsafe ancestors, traversal, links, changed source files, duplicate selections, reserved-name/path-limit problems.
@@ -18,9 +18,12 @@ Prerequisites: **.NET SDK 10.0.x**, **Python 3.12+**, and a desktop supported by
 From this directory:
 
 ```sh
+export AVALONIA_TELEMETRY_OPTOUT=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
 dotnet restore MediaOrganizer.sln --locked-mode
 dotnet run --project src/Organizer.Desktop
 ```
+
+PowerShell: set `$env:AVALONIA_TELEMETRY_OPTOUT='1'; $env:DOTNET_CLI_TELEMETRY_OPTOUT='1'` first. Both check scripts set these variables. A project preflight refuses the Avalonia build task unless its documented environment opt-out is present.
 
 If Python is named `python` on Windows, pass `-- --python python`. `--worker /absolute/path/to/worker/main.py` overrides automatic repository lookup. The app is fixture-only even when pointed at a real source folder: real folder scanning is read-only; matching uses synthetic metadata, visibly labeled. Do not accept demo metadata as real metadata.
 
@@ -38,14 +41,14 @@ The demo script only writes placeholder files in a newly created temporary direc
 
 ```sh
 ./scripts/check.sh
-# Windows: run the dotnet restore/build/run and Python unittest commands in check.sh separately.
+# Windows: ./scripts/check.ps1
 ```
 
 The executable test harness returns nonzero on failure. It does not need a third-party test framework. Run offline worker tests with `python3 -m unittest discover -s worker/tests -v`. See `docs/validation.md` for actual checks and limitations rather than assuming all target operating systems were tested.
 
 ## Data location and safety
 
-The index is `MDCxOrganizer/index.db` under the OS local application-data directory, never in the selected media directory. The index contains local filenames and metadata; keep it private. It is a rebuildable local index, not a media backup. Database writes are serialized, transactional and parameterized, with WAL/foreign keys and explicit migration version checks. The Python process cannot organize files and uses fixture transport only. No credentials are requested.
+The index defaults to `MDCxOrganizer/index.db` under the OS local application-data directory. The index contains local filenames and metadata; keep it private. It is a rebuildable local index, not a media backup. Database writes are serialized, transactional and parameterized, with WAL/foreign keys and explicit migration version checks. The Python process cannot organize files and uses fixture transport only. No credentials are requested. Media-group review stamps include sidecar change fingerprints; editing withdraws stored acceptance, while undo rechecks the snapshot. Older unstamped preview-version reviews require an explicitly surfaced recheck.
 
 A safe preview is a point-in-time check, not authorization or proof that a future move will succeed. The planned journal/recovery design must be implemented and reviewed before a real executor can be enabled. See [architecture](docs/architecture.md), [scraper audit](docs/scraper-audit.md), and [licensing notice](NOTICE.md).
 

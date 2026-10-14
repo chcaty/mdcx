@@ -1,0 +1,56 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style Selector="Window">
+    <Setter Property="FontFamily" Value="Inter, Noto Sans CJK SC, Microsoft YaHei UI, PingFang SC, sans-serif" />
+    <Setter Property="FontSize" Value="{DynamicResource FontBody}" />
+    <Setter Property="Foreground" Value="{StaticResource BodyBrush}" />
+  </Style>
+  <Style Selector="TextBlock"><Setter Property="Foreground" Value="{StaticResource BodyBrush}" /></Style>
+  <Style Selector="TextBlock.caption"><Setter Property="Foreground" Value="{StaticResource MutedBrush}" /><Setter Property="FontSize" Value="{DynamicResource FontSmall}" /></Style>
+  <Style Selector="TextBlock.tiny"><Setter Property="Foreground" Value="{StaticResource MutedBrush}" /><Setter Property="FontSize" Value="{DynamicResource FontTiny}" /></Style>
+  <Style Selector="TextBlock.section"><Setter Property="Foreground" Value="{StaticResource InkBrush}" /><Setter Property="FontSize" Value="{DynamicResource FontSection}" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+  <Style Selector="Button"><Setter Property="CornerRadius" Value="6" /><Setter Property="MinHeight" Value="32" /><Setter Property="Padding" Value="12,6" /><Setter Property="Background" Value="#FCFDF9" /><Setter Property="Foreground" Value="{StaticResource BodyBrush}" /><Setter Property="BorderBrush" Value="#D5DFCC" /><Setter Property="BorderThickness" Value="1" /><Setter Property="FontSize" Value="{DynamicResource FontSmall}" /></Style>
+  <Style Selector="Button:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="#EEF4E6" /><Setter Property="BorderBrush" Value="#B2C6A3" /></Style>
+  <Style Selector="Button:pressed /template/ ContentPresenter"><Setter Property="Background" Value="#DFEAD6" /></Style>
+  <Style Selector="Button.primary"><Setter Property="Background" Value="{StaticResource AccentBrush}" /><Setter Property="Foreground" Value="White" /><Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" /><Setter Property="MinHeight" Value="43" /><Setter Property="FontSize" Value="{DynamicResource FontMedium}" /></Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="#426849" /><Setter Property="Foreground" Value="White" /></Style>
+  <Style Selector="Button.flat"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="6,3" /><Setter Property="MinHeight" Value="25" /><Setter Property="Foreground" Value="#59734B" /></Style>
+  <Style Selector="Button.icon"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="5" /><Setter Property="MinHeight" Value="26" /><Setter Property="MinWidth" Value="26" /></Style>
+  <Style Selector="Button.nav"><Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="12,10" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="MinHeight" Value="39" /><Setter Property="FontSize" Value="{DynamicResource FontMedium}" /></Style>
+  <Style Selector="Button.nav.active"><Setter Property="Background" Value="#DCE7D5" /><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /></Style>
+  <Style Selector="Button.filter"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="12,4" /><Setter Property="MinHeight" Value="27" /><Setter Property="CornerRadius" Value="4" /></Style>
+  <Style Selector="Button.filter.active"><Setter Property="Background" Value="White" /><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="BorderThickness" Value="1" /><Setter Property="BorderBrush" Value="#DCE4D3" /></Style>
+  <Style Selector="TextBox"><Setter Property="CornerRadius" Value="5" /><Setter Property="MinHeight" Value="32" /><Setter Property="Background" Value="#FCFDF9" /><Setter Property="BorderBrush" Value="#D9E2D1" /><Setter Property="BorderThickness" Value="1" /><Setter Property="Padding" Value="10,5" /><Setter Property="FontSize" Value="{DynamicResource FontSmall}" /><Setter Property="Foreground" Value="{StaticResource BodyBrush}" /><Setter Property="SelectionBrush" Value="#C9DDBA" /><Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" /></Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement"><Setter Property="BorderBrush" Value="#6B8C58" /></Style>
+  <Style Selector="ComboBox"><Setter Property="CornerRadius" Value="5" /><Setter Property="MinHeight" Value="32" /><Setter Property="Background" Value="#FCFDF9" /><Setter Property="BorderBrush" Value="#D9E2D1" /><Setter Property="FontSize" Value="{DynamicResource FontSmall}" /><Setter Property="HorizontalAlignment" Value="Stretch" /></Style>
+  <Style Selector="Border.panel"><Setter Property="Background" Value="White" /><Setter Property="BorderBrush" Value="{StaticResource LineBrush}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="7" /></Style>
+  <Style Selector="Border.rule"><Setter Property="Height" Value="1" /><Setter Property="Background" Value="#E7EDDF" /></Style>
+  <Style Selector="Border.pill"><Setter Property="CornerRadius" Value="5" /><Setter Property="Padding" Value="10,4" /><Setter Property="HorizontalAlignment" Value="Left" /></Style>
+  <Style Selector="CheckBox"><Setter Property="MinWidth" Value="20" /><Setter Property="MinHeight" Value="22" /><Setter Property="Padding" Value="0" /></Style>
+  <Style Selector="ListBox.media"><Setter Property="Background" Value="White" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="0" /></Style>
+  <Style Selector="ListBox.media ListBoxItem"><Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0" /><Setter Property="MinHeight" Value="74" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Background" Value="White" /><Setter Property="BorderBrush" Value="Transparent" /><Setter Property="BorderThickness" Value="3,0,0,0" /></Style>
+  <Style Selector="ListBox.media ListBoxItem:pointerover"><Setter Property="Background" Value="#F3F6EE" /></Style>
+  <Style Selector="ListBox.media ListBoxItem:selected"><Setter Property="Background" Value="#E8F0E1" /><Setter Property="BorderBrush" Value="#5D7C4A" /></Style>
+  <Style Selector="ListBox.media ListBoxItem /template/ ContentPresenter"><Setter Property="Background" Value="{TemplateBinding Background}" /><Setter Property="BorderBrush" Value="{TemplateBinding BorderBrush}" /><Setter Property="BorderThickness" Value="{TemplateBinding BorderThickness}" /><Setter Property="CornerRadius" Value="0" /></Style>
+  <Style Selector="ListBox.media ListBoxItem:selected /template/ ContentPresenter"><Setter Property="Background" Value="#E8F0E1" /><Setter Property="BorderBrush" Value="#5D7C4A" /><Setter Property="BorderThickness" Value="3,0,0,0" /></Style>
+  <Style Selector="ListBox.media ListBoxItem:focus-visible"><Setter Property="BorderBrush" Value="#34583E" /></Style>
+  <Style Selector="ListBox.candidates"><Setter Property="Background" Value="#F8FAF5" /><Setter Property="BorderBrush" Value="#E0E7D8" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="5" /></Style>
+  <Style Selector="ListBox.candidates ListBoxItem"><Setter Property="Padding" Value="9,8" /></Style>
+  <Style Selector="Expander"><Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="0" /><Setter Property="FontSize" Value="{DynamicResource FontBody}" /></Style>
+  <Style Selector="Expander /template/ ToggleButton#PART_HeaderSite"><Setter Property="Padding" Value="0,9" /><Setter Property="MinHeight" Value="34" /><Setter Property="Background" Value="Transparent" /></Style>
+  <Style Selector="ToolTip"><Setter Property="MaxWidth" Value="560" /></Style>
+  <Style Selector="Button.icon:disabled /template/ ContentPresenter"><Setter Property="Background" Value="Transparent" /></Style>
+  <Style Selector="CheckBox">
+    <Setter Property="Template"><ControlTemplate><Border x:Name="CheckFrame" Width="16" Height="16" CornerRadius="4" Background="White" BorderBrush="#B6C0AD" BorderThickness="1" HorizontalAlignment="Left" VerticalAlignment="Center"><Grid><Path x:Name="CheckMark" Data="M2 6 L5 9 L11 3" Stroke="White" StrokeThickness="1.6" Width="13" Height="13" IsVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center" /><Path x:Name="MixedMark" Data="M3 7 H10" Stroke="White" StrokeThickness="1.6" Width="13" Height="13" IsVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center" /></Grid></Border></ControlTemplate></Setter>
+  </Style>
+  <Style Selector="CheckBox:checked /template/ Border#CheckFrame"><Setter Property="Background" Value="#34583E" /><Setter Property="BorderBrush" Value="#34583E" /></Style>
+  <Style Selector="CheckBox:indeterminate /template/ Border#CheckFrame"><Setter Property="Background" Value="#34583E" /><Setter Property="BorderBrush" Value="#34583E" /></Style>
+  <Style Selector="CheckBox:checked /template/ Path#CheckMark"><Setter Property="IsVisible" Value="True" /></Style>
+  <Style Selector="CheckBox:indeterminate /template/ Path#MixedMark"><Setter Property="IsVisible" Value="True" /></Style>
+  <Style Selector="CheckBox:focus-visible /template/ Border#CheckFrame"><Setter Property="BorderThickness" Value="2" /><Setter Property="BorderBrush" Value="#152F21" /></Style>
+  <Style Selector="Expander">
+    <Setter Property="Template"><ControlTemplate><Grid RowDefinitions="Auto,Auto"><ToggleButton x:Name="PART_HeaderSite" HorizontalAlignment="Stretch" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" Background="Transparent" BorderThickness="0" Padding="0,8" HorizontalContentAlignment="Stretch"><Grid ColumnDefinitions="*,Auto"><ContentPresenter Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}" /><TextBlock Grid.Column="1" Text="›" FontSize="18" Foreground="#789068" Margin="8,-3,2,0" /></Grid></ToggleButton><ContentPresenter Grid.Row="1" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" IsVisible="{TemplateBinding IsExpanded}" Margin="0,4,0,8" /></Grid></ControlTemplate></Setter>
+  </Style>
+  <Style Selector="Button:disabled /template/ ContentPresenter"><Setter Property="Background" Value="#EEF1EB" /><Setter Property="Foreground" Value="#8A9584" /><Setter Property="BorderBrush" Value="#E2E7DC" /></Style>
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter"><Setter Property="Background" Value="#CBD7C6" /><Setter Property="Foreground" Value="White" /></Style>
+  <Style Selector="Button.icon:disabled /template/ ContentPresenter"><Setter Property="Background" Value="Transparent" /></Style>
+</Styles>

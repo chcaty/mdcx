@@ -1,0 +1,10 @@
+<Project>
+  <!-- Avalonia.BuildServices documents a separate build-time telemetry environment opt-out.
+       Fail before that task unless the caller supplied it; a property alone would not set the process environment. -->
+  <Target Name="RequireAvaloniaTelemetryOptOut" BeforeTargets="AvaloniaStats" Condition="'$(UsedAvaloniaProducts)' != ''">
+    <PropertyGroup>
+      <_OrganizerAvaloniaOptOutEnvironment>$([System.Environment]::GetEnvironmentVariable('AVALONIA_TELEMETRY_OPTOUT'))</_OrganizerAvaloniaOptOutEnvironment>
+    </PropertyGroup>
+    <Error Condition="'$(_OrganizerAvaloniaOptOutEnvironment)' != '1'" Text="Set AVALONIA_TELEMETRY_OPTOUT=1 in the build environment, or use scripts/check.sh / scripts/check.ps1. This project does not opt into build telemetry." />
+  </Target>
+</Project>

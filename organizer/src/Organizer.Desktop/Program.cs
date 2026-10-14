@@ -17,7 +17,7 @@ internal static class Program
             return;
         }
         var app = BuildAvaloniaApp();
-        if (Options.ScreenshotPath is not null)
+        if (Options.ScreenshotPath is not null || Options.SmokeTestView)
             app.UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).UseSkia();
         app.StartWithClassicDesktopLifetime(args);
     }
@@ -26,7 +26,8 @@ internal static class Program
 }
 
 public sealed record StartupOptions(string? DemoPath = null, string? WorkerPath = null,
-    string PythonExecutable = "python3", string? ScreenshotPath = null, bool ScreenshotPlan = false, string? IndexPath = null)
+    string PythonExecutable = "python3", string? ScreenshotPath = null, bool ScreenshotPlan = false, string? IndexPath = null,
+    bool ScreenshotFixture = false, int ScreenshotWidth = 1440, int ScreenshotHeight = 900, double FontScale = 1, bool SmokeTestView = false)
 {
     public static StartupOptions Parse(string[] args)
     {
@@ -36,7 +37,16 @@ public sealed record StartupOptions(string? DemoPath = null, string? WorkerPath 
             return index >= 0 && index + 1 < args.Length && !args[index + 1].StartsWith("--", StringComparison.Ordinal)
                 ? args[index + 1] : null;
         }
-        return new(Read("--demo"), Read("--worker"), Read("--python") ?? (OperatingSystem.IsWindows() ? "python" : "python3"), Read("--screenshot"), args.Contains("--screenshot-plan", StringComparer.Ordinal));
+        var screenshot = Read("--screenshot");
+        var smokeView = args.Contains("--smoke-test-view", StringComparer.Ordinal);
+        int Dimension(string flag, int fallback, int minimum) => int.TryParse(Read(flag), out var value) ? Math.Clamp(value, minimum, 4000) : fallback;
+        var scale = double.TryParse(Read("--font-scale"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var fontScale) && double.IsFinite(fontScale) ? Math.Clamp(fontScale, 0.85, 1.5) : 1;
+        // Rendering always uses a fresh index, never the user's saved reviews.
+        var index = screenshot is null && !smokeView ? null : Path.Combine(Path.GetTempPath(), $"mdcx-screenshot-{Guid.NewGuid():N}", "index.db");
+        var demo = screenshot is not null && args.Contains("--screenshot-empty", StringComparer.Ordinal) ? null : Read("--demo");
+        return new(demo, Read("--worker"), Read("--python") ?? (OperatingSystem.IsWindows() ? "python" : "python3"), screenshot,
+            args.Contains("--screenshot-plan", StringComparer.Ordinal), index,
+            args.Contains("--screenshot-fixture", StringComparer.Ordinal), Dimension("--screenshot-width", 1440, 1160), Dimension("--screenshot-height", 900, 740), scale, smokeView);
     }
 
     public string ResolveWorkerPath()

@@ -46,6 +46,13 @@ public sealed class IndexStore : IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
             Execute("DELETE FROM reviews WHERE asset_id=$id AND fingerprint<>$fingerprint", tx, ("$id", asset.Id), ("$fingerprint", asset.Fingerprint));
+            if (Scalar("SELECT json FROM reviews WHERE asset_id=$id", tx, ("$id", asset.Id)) is string priorReviewJson)
+            {
+                var priorReview = JsonSerializer.Deserialize<ReviewedMetadata>(priorReviewJson);
+                if (priorReview?.Provenance.TryGetValue(MediaSnapshot.ProvenanceKey, out var priorSnapshot) == true &&
+                    priorSnapshot != MediaSnapshot.Fingerprint(asset))
+                    Execute("DELETE FROM reviews WHERE asset_id=$id", tx, ("$id", asset.Id));
+            }
             Execute("INSERT INTO assets VALUES($id,$root,$scan,$fingerprint,$json) ON CONFLICT(id) DO UPDATE SET root=excluded.root,scan_id=excluded.scan_id,fingerprint=excluded.fingerprint,json=excluded.json", tx,
                 ("$id", asset.Id), ("$root", scan.Root), ("$scan", scanId), ("$fingerprint", asset.Fingerprint), ("$json", JsonSerializer.Serialize(asset)));
         }
@@ -60,11 +67,37 @@ public sealed class IndexStore : IDisposable
         var fingerprint = Scalar("SELECT fingerprint FROM assets WHERE id=$id", tx, ("$id", assetId)) as string ?? throw new InvalidOperationException("Asset must be indexed before review.");
         if (string.IsNullOrEmpty(expectedFingerprint) || fingerprint != expectedFingerprint)
             throw new InvalidOperationException("The source was rescanned or changed after selection. Rescan and review again.");
+        if (metadata.Provenance.TryGetValue(MediaSnapshot.ProvenanceKey, out var expectedSnapshot))
+        {
+            var indexedJson = Scalar("SELECT json FROM assets WHERE id=$id", tx, ("$id", assetId)) as string;
+            var indexedAsset = indexedJson is null ? null : JsonSerializer.Deserialize<MediaAsset>(indexedJson);
+            if (indexedAsset is null || MediaSnapshot.Fingerprint(indexedAsset) != expectedSnapshot)
+                throw new InvalidOperationException("The media group changed after selection. Rescan and review again.");
+        }
         Execute("INSERT INTO reviews VALUES($id,$fingerprint,$json,$utc) ON CONFLICT(asset_id) DO UPDATE SET fingerprint=excluded.fingerprint,json=excluded.json,reviewed_utc=excluded.reviewed_utc", tx,
             ("$id", assetId), ("$fingerprint", fingerprint), ("$json", JsonSerializer.Serialize(metadata)), ("$utc", Now()));
         cancellationToken.ThrowIfCancellationRequested();
         tx.Commit();
     }, cancellationToken);
+
+    /// <summary>Withdraw only the exact review being edited; a delayed editor cannot erase a newer review or scan.</summary>
+    public async Task<bool> InvalidateReviewAsync(string assetId, string expectedFingerprint, ReviewedMetadata expectedReview, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedFingerprint);
+        ArgumentNullException.ThrowIfNull(expectedReview);
+        var removed = false;
+        await SerializedAsync(() =>
+        {
+            using var tx = _connection.BeginTransaction();
+            removed = Execute("""
+                DELETE FROM reviews WHERE asset_id=$id AND fingerprint=$fingerprint AND json=$review
+                AND EXISTS(SELECT 1 FROM assets WHERE id=$id AND fingerprint=$fingerprint)
+                """, tx, ("$id", assetId), ("$fingerprint", expectedFingerprint), ("$review", JsonSerializer.Serialize(expectedReview))) == 1;
+            cancellationToken.ThrowIfCancellationRequested();
+            tx.Commit();
+        }, cancellationToken).ConfigureAwait(false);
+        return removed;
+    }
 
     public Task SavePlanAsync(OrganizationPlan plan, CancellationToken cancellationToken = default) => SerializedAsync(() =>
         Execute("INSERT INTO plans VALUES($id,$utc,$json,1) ON CONFLICT(id) DO UPDATE SET json=excluded.json", null,
@@ -80,9 +113,18 @@ public sealed class IndexStore : IDisposable
         await SerializedAsync(() =>
         {
             using var command = _connection.CreateCommand();
-            command.CommandText = "SELECT r.asset_id,r.json FROM reviews r JOIN assets a ON r.asset_id=a.id AND r.fingerprint=a.fingerprint";
+            command.CommandText = "SELECT r.asset_id,r.json,a.json FROM reviews r JOIN assets a ON r.asset_id=a.id AND r.fingerprint=a.fingerprint";
             using var reader = command.ExecuteReader();
-            while (reader.Read()) result[reader.GetString(0)] = JsonSerializer.Deserialize<ReviewedMetadata>(reader.GetString(1))!;
+            while (reader.Read())
+            {
+                var review = JsonSerializer.Deserialize<ReviewedMetadata>(reader.GetString(1))!;
+                if (review.Provenance.TryGetValue(MediaSnapshot.ProvenanceKey, out var expectedSnapshot))
+                {
+                    var indexedAsset = JsonSerializer.Deserialize<MediaAsset>(reader.GetString(2));
+                    if (indexedAsset is null || MediaSnapshot.Fingerprint(indexedAsset) != expectedSnapshot) continue;
+                }
+                result[reader.GetString(0)] = review;
+            }
         }, cancellationToken);
         return result;
     }
