@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/Organizer.Core/Organizer.Core.csproj" /><ProjectReference Include="../../src/Organizer.Infrastructure/Organizer.Infrastructure.csproj" /></ItemGroup>
+</Project>
