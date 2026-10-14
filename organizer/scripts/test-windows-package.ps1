@@ -22,12 +22,13 @@ New-Item -ItemType Directory -Path $foreignDirectory -Force | Out-Null
 $localData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
 $dataDirectory = Join-Path $localData 'MDCxOrganizer'
 $index = Join-Path $dataDirectory 'index.db'
+$sourceSettings = Join-Path $dataDirectory 'metadata-source.json'
 $sentinel = Join-Path $dataDirectory "package-test-$testId.txt"
 $registration = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{1BD456B0-B27A-44EC-B38C-550684593F2B}_is1'
 $defaultProgram = Join-Path $localData 'Programs/MDCxOrganizer'
 $machineRegistration = $registration -replace '^HKCU:', 'HKLM:'
 if ((Test-Path -LiteralPath $registration) -or (Test-Path -LiteralPath $machineRegistration) -or (Test-Path -LiteralPath $defaultProgram) -or
-    (Test-Path -LiteralPath $index) -or (Test-Path -LiteralPath "$index-wal") -or (Test-Path -LiteralPath "$index-shm") -or
+    (Test-Path -LiteralPath $index) -or (Test-Path -LiteralPath $sourceSettings) -or (Test-Path -LiteralPath "$index-wal") -or (Test-Path -LiteralPath "$index-shm") -or
     (Get-Process -Name 'Organizer.Desktop' -ErrorAction SilentlyContinue)) {
     throw 'Refusing to test over an existing installation, index, or running app. Use a clean disposable Windows account.'
 }
@@ -39,11 +40,14 @@ foreach ($path in @($dataDirectory, $testRoot)) {
 }
 $dataDirectoryExisted = Test-Path -LiteralPath $dataDirectory
 $indexCreated = $false
+$settingsCreated = $false
+$settingsHash = $null
 $indexHash = $null
 $installed = $false
 $uninstalled = $false
 $nativeReport = Join-Path $testRoot 'native-smoke.json'
-$result = [ordered]@{ schemaVersion = 1; status = 'failed'; installerSha256 = (Get-FileHash -LiteralPath $Installer -Algorithm SHA256).Hash.ToLowerInvariant(); installed = $false; nativeSmoke = $false; uninstalled = $false; indexPreserved = $false; dataSentinelPreserved = $false; unknownInstalledFilePreserved = $false; noAutomaticLaunch = $false; error = $null }
+$httpReport = Join-Path $testRoot 'bundled-http-smoke.json'
+$result = [ordered]@{ schemaVersion = 1; status = 'failed'; installerSha256 = (Get-FileHash -LiteralPath $Installer -Algorithm SHA256).Hash.ToLowerInvariant(); installed = $false; nativeSmoke = $false; bundledHttpSmoke = $false; sourceSettingsPreserved = $false; uninstalled = $false; indexPreserved = $false; dataSentinelPreserved = $false; unknownInstalledFilePreserved = $false; noAutomaticLaunch = $false; error = $null }
 
 function Invoke-TestProcess {
     param([string] $File, [string[]] $Arguments, [int] $TimeoutSeconds = 120, [switch] $IsolateRuntime)
@@ -88,6 +92,18 @@ try {
         $path = Join-Path $installDirectory $file.path
         if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $file.sha256) { throw "Installed hash mismatch: $($file.path)" }
     }
+    if ($manifest.schemaVersion -ne 2 -or $manifest.defaultNetworkEnabled -ne $false -or $manifest.liveSourceVerified -ne $false -or
+        @($manifest.pythonDependencies).Count -ne 7) { throw 'Package manifest omitted HTTP runtime provenance or disabled defaults.' }
+    # Run under the installed isolated interpreter; no system pip/Python/dependency path.
+    Invoke-TestProcess -File $python -Arguments @('-B', (Join-Path $installDirectory 'diagnostics/verify_bundled_http.py'),
+        '--package-root', $installDirectory, '--report', $httpReport) -IsolateRuntime
+    $httpSmoke = Get-Content -LiteralPath $httpReport -Raw | ConvertFrom-Json
+    if ($httpSmoke.status -ne 'passed' -or $httpSmoke.httpxVersion -ne '0.28.1' -or
+        $httpSmoke.sourceNetworkRequests -ne 0 -or $httpSmoke.mockRequests -ne 1) { throw 'Bundled HTTP/configuration probe failed.' }
+    foreach ($field in @('dependenciesBundled', 'sourceConfigDisabled', 'javbusWired', 'mockMetadataMatched', 'environmentIgnored')) {
+        if ($httpSmoke.$field -ne $true) { throw "Bundled HTTP requirement failed: $field" }
+    }
+    $result.bundledHttpSmoke = $true
     $unknownFile = Join-Path $installDirectory "user-owned-$testId.txt"
     Set-Content -LiteralPath $unknownFile -Value $testId -Encoding ascii
     New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
@@ -95,6 +111,9 @@ try {
     $createIndex = 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("CREATE TABLE package_preservation_test(value TEXT)"); c.execute("INSERT INTO package_preservation_test VALUES(?)",(sys.argv[2],)); c.commit(); c.close()'
     Invoke-TestProcess -File $python -Arguments @('-B', '-c', $createIndex, $index, $testId) -IsolateRuntime
     $indexCreated = $true
+    Copy-Item -LiteralPath (Join-Path $installDirectory 'source-settings.example.json') -Destination $sourceSettings
+    $settingsCreated = $true
+    $settingsHash = (Get-FileHash -LiteralPath $sourceSettings -Algorithm SHA256).Hash
     $indexHash = (Get-FileHash -LiteralPath $index -Algorithm SHA256).Hash
     $sentinelHash = (Get-FileHash -LiteralPath $sentinel -Algorithm SHA256).Hash
     Invoke-TestProcess -File $app -Arguments @('--smoke-test-package', '--package-smoke-report', $nativeReport) -TimeoutSeconds 110 -IsolateRuntime
@@ -115,9 +134,10 @@ try {
     foreach ($path in @($app, $python, $worker)) { if (Test-Path -LiteralPath $path) { throw "Installed binary survived uninstall: $path" } }
     if (Test-Path -LiteralPath $registration) { throw 'Uninstall registration survived uninstall.' }
     $result.indexPreserved = (Test-Path -LiteralPath $index) -and ((Get-FileHash -LiteralPath $index -Algorithm SHA256).Hash -eq $indexHash)
+    $result.sourceSettingsPreserved = (Test-Path -LiteralPath $sourceSettings) -and ((Get-FileHash -LiteralPath $sourceSettings -Algorithm SHA256).Hash -eq $settingsHash)
     $result.dataSentinelPreserved = (Test-Path -LiteralPath $sentinel) -and ((Get-FileHash -LiteralPath $sentinel -Algorithm SHA256).Hash -eq $sentinelHash)
     $result.unknownInstalledFilePreserved = (Test-Path -LiteralPath $unknownFile) -and ((Get-Content -LiteralPath $unknownFile -Raw).Trim() -eq $testId)
-    if (-not $result.indexPreserved -or -not $result.dataSentinelPreserved -or -not $result.unknownInstalledFilePreserved) { throw 'Uninstall removed or changed test-owned user data.' }
+    if (-not $result.sourceSettingsPreserved -or -not $result.indexPreserved -or -not $result.dataSentinelPreserved -or -not $result.unknownInstalledFilePreserved) { throw 'Uninstall removed or changed test-owned user data.' }
     $result.status = 'passed'
 } catch {
     $result.error = $_.Exception.Message
@@ -126,11 +146,12 @@ try {
     if ($installed -and -not $uninstalled -and (Test-Path -LiteralPath (Join-Path $installDirectory 'unins000.exe'))) {
         try { Invoke-TestProcess -File (Join-Path $installDirectory 'unins000.exe') -Arguments @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') } catch { Write-Warning "Cleanup uninstall failed: $_" }
     }
-    foreach ($path in @($nativeReport, [IO.Path]::ChangeExtension($nativeReport, '.png'))) {
+    foreach ($path in @($nativeReport, $httpReport, [IO.Path]::ChangeExtension($nativeReport, '.png'))) {
         if (Test-Path -LiteralPath $path -PathType Leaf) { Copy-Item -LiteralPath $path -Destination $OutputDirectory -Force }
     }
     $result | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'install-test.json') -Encoding utf8NoBOM
     # Cleanup only the exact fixture files created above, never real index/media.
+    if ($settingsCreated -and (Test-Path -LiteralPath $sourceSettings) -and (Get-FileHash -LiteralPath $sourceSettings -Algorithm SHA256).Hash -eq $settingsHash) { Remove-Item -LiteralPath $sourceSettings }
     if ($indexCreated -and (Test-Path -LiteralPath $index) -and (Get-FileHash -LiteralPath $index -Algorithm SHA256).Hash -eq $indexHash) { Remove-Item -LiteralPath $index }
     if ((Test-Path -LiteralPath $sentinel) -and ((Get-Content -LiteralPath $sentinel -Raw).Trim() -eq $testId)) { Remove-Item -LiteralPath $sentinel }
     if (-not $dataDirectoryExisted -and (Test-Path -LiteralPath $dataDirectory) -and @(Get-ChildItem -LiteralPath $dataDirectory -Force).Count -eq 0) { Remove-Item -LiteralPath $dataDirectory }

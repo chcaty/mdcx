@@ -24,6 +24,8 @@ internal static class WorkbenchSmoke
         try
         {
             StartupOptionsSmoke.Run(root, Check);
+            await PortableDataSmoke.RunAsync(root, options, Check);
+            await SourceSettingsSmoke.RunAsync(root, options, Check);
             await File.WriteAllTextAsync(Path.Combine(source, "DEMO-001.mkv"), "Synthetic media fixture. Not playable.");
             await File.WriteAllTextAsync(Path.Combine(source, "DEMO-001.zh-CN.srt"), "Synthetic subtitle fixture.");
             await File.WriteAllTextAsync(Path.Combine(source, "DEMO-002.mp4"), "Second synthetic media fixture.");
@@ -354,6 +356,7 @@ internal static class WorkbenchSmoke
                 Check(older.IsReviewing && older.SelectedAsset == failedRow && older.Assets.All(a => a.Review is null),
                     "Failed stale confirmation cannot advance the sequential review queue");
             }
+            await CheckSourceUnavailableAsync(options, root, Check);
             await CheckCloseAfterCommittedSaveAsync(options, root, Check);
             Check(Directory.GetFiles(source).Length == before.Count && before.All(pair => File.ReadAllText(Path.Combine(source, pair.Key!)) == pair.Value),
                 "All synthetic source files remain byte-for-byte unchanged");
@@ -362,6 +365,93 @@ internal static class WorkbenchSmoke
         }
         catch (Exception ex) { Console.Error.WriteLine($"UI SMOKE FAILED: {ex}"); return 1; }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(root, recursive: true); }
+    }
+
+    private static async Task CheckSourceUnavailableAsync(StartupOptions options, string root, Action<bool, string> check)
+    {
+        var source = Path.Combine(root, "source-unavailable");
+        Directory.CreateDirectory(source);
+        foreach (var name in new[] { "UNAVAIL-111.mkv", "UNAVAIL-222.mkv", "EMPTY-111.mkv", "ERROR-111.mkv" })
+            await File.WriteAllTextAsync(Path.Combine(source, name), "Synthetic unavailable-state fixture. Not playable.");
+        var worker = Path.Combine(root, "source_state_worker.py");
+        await File.WriteAllTextAsync(worker, """
+            import json, sys
+            request = json.loads(sys.stdin.readline())
+            event = {"version": 1, "requestId": request["requestId"], "terminal": True}
+            if request["query"] == "EMPTY-111":
+                event.update(type="completed", status="no_match", count=0)
+            else:
+                code = "schema_drift" if request["query"] == "ERROR-111" else "unsupported_query" if request["query"] == "UNSUP-111" else "live_unavailable"
+                event.update(type="error", error={"code": code, "message": "Synthetic source state."})
+            print(json.dumps(event), flush=True)
+            """);
+        using (var vm = new WorkbenchViewModel(options with { DemoPath = source, WorkerPath = worker }))
+        {
+            await vm.InitializeAsync();
+            var first = vm.Assets.First(row => row.Filename == "UNAVAIL-111.mkv");
+            var second = vm.Assets.First(row => row.Filename == "UNAVAIL-222.mkv");
+            vm.SelectedAsset = first;
+            await vm.MatchAsync();
+            check(!vm.IsBusy && first.MatchFailureCode == "live_unavailable" && first.StatusText == "需检查" &&
+                first.EvidenceSummary == "来源未启用或不可用" && vm.Candidates.Count == 0,
+                "Unavailable source produces an attention/error state rather than a false no-match result");
+            check(vm.Status.Contains("演示模式仅支持离线样例；真实来源未启用", StringComparison.Ordinal) &&
+                vm.CandidateStatus.Contains("手动填写资料", StringComparison.Ordinal) && !vm.CandidateStatus.Contains("Python", StringComparison.Ordinal),
+                "Demo-mode unavailable source points to explicit configuration and manual-review alternatives");
+            vm.SelectedAsset = second;
+            vm.SelectedAsset = first;
+            check(vm.CandidateStatus.Contains("真实来源未启用", StringComparison.Ordinal),
+                "Refocusing an unavailable row preserves its actionable source diagnosis");
+            vm.MatchQuery = "EMPTY-111";
+            check(first.MatchFailureCode == "" && !first.EvidenceSummary.Contains("未启用或不可用", StringComparison.Ordinal),
+                "Changing the query clears a stale unavailable-source diagnosis");
+            await vm.MatchAsync();
+            check(first.MatchFailureCode == "" && vm.CandidateStatus.Contains("没有匹配的离线候选", StringComparison.Ordinal),
+                "A genuine empty response remains distinct from an unavailable source");
+            vm.MatchQuery = "ERROR-111";
+            await vm.MatchAsync();
+            check(first.MatchFailureCode == "schema_drift" && first.EvidenceSummary == "识别失败 · 可重试" &&
+                !vm.CandidateStatus.Contains("来源尚未接入", StringComparison.Ordinal),
+                "Parser errors are not mislabeled as missing live-source integration");
+            vm.MatchQuery = "UNAVAIL-111";
+            first.IsChecked = true; second.IsChecked = true;
+            await vm.MatchCheckedAsync();
+            check(vm.Status.Contains("来源不可用 2 项", StringComparison.Ordinal) && vm.Status.Contains("无候选 0 项", StringComparison.Ordinal) &&
+                first.MatchFailureCode == "live_unavailable" && second.MatchFailureCode == "live_unavailable" && vm.ReviewedCount == 0,
+                "An entirely unavailable batch reports unavailable counts without claiming identification success");
+            vm.SelectedAsset = second;
+            vm.MatchQuery = "UNSUP-111";
+            await vm.MatchAsync();
+            check(second.MatchFailureCode == "unsupported_query" && second.EvidenceSummary == "所选来源不支持此检索类型" &&
+                vm.CandidateStatus.Contains("请输入片名查询", StringComparison.Ordinal) && !vm.CandidateStatus.Contains("Python", StringComparison.Ordinal),
+                "Unsupported query types explain the title-query alternative instead of blaming the worker path");
+            vm.SelectVisibleCommand.Execute(null);
+            await vm.MatchCheckedAsync();
+            check(vm.Status.Contains("来源不可用 1 项", StringComparison.Ordinal) && vm.Status.Contains("无候选 1 项", StringComparison.Ordinal) &&
+                vm.Status.Contains("检索类型不支持 1 项", StringComparison.Ordinal) &&
+                vm.Status.Contains("失败 1 项", StringComparison.Ordinal) && vm.ReviewedCount == 0,
+                "Mixed batches separately count unavailable sources, unsupported queries, empty results, and parser failures");
+        }
+        await File.WriteAllTextAsync(Path.Combine(source, "BF-658.mkv"), "Synthetic filename regression fixture. Not playable.");
+        using (var vm = new WorkbenchViewModel(options with { DemoPath = source }))
+        {
+            await vm.InitializeAsync();
+            vm.SelectedAsset = vm.Assets.First(row => row.Filename == "BF-658.mkv");
+            check(vm.SelectedAsset.Asset.Identifier == "BF-658" && vm.MatchQuery == "BF-658",
+                "BF-658 synthetic filename is extracted and passed unchanged as the default query");
+            await vm.MatchAsync();
+            check(vm.SelectedAsset.MatchFailureCode == "live_unavailable" && vm.CandidateStatus.Contains("演示模式仅支持离线样例", StringComparison.Ordinal),
+                "The bundled worker reports arbitrary synthetic filenames as unavailable through the real client");
+            vm.SelectedMatchSource = "TPDB（影片）";
+            await vm.MatchAsync();
+            check(vm.SelectedAsset.MatchFailureCode == "unsupported_query" && vm.CandidateStatus.Contains("请输入片名查询", StringComparison.Ordinal),
+                "The bundled worker reports TPDB catalog queries as unsupported through the real client");
+            vm.SelectedMatchSource = "xcity";
+            vm.MatchQuery = "DEMO-001";
+            await vm.MatchAsync();
+            check(vm.Candidates.Count == 1 && vm.SelectedAsset.MatchFailureCode == "" && vm.SelectedAsset.Review is null,
+                "A supported offline fixture still matches after an unavailable request without accepting metadata");
+        }
     }
 
     private static async Task CheckCloseAfterCommittedSaveAsync(StartupOptions options, string root, Action<bool, string> check)

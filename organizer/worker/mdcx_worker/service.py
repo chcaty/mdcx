@@ -40,9 +40,12 @@ class Matcher:
             adapter = self.adapters[source]
             counters = self.scheduler.counters(source)
             if not adapter.supports_query(query):
-                counters.noMatches += 1
                 if selected:
                     selected[0].provenance["rejectedFallback"] = f"{source}:no_comparable_catalog_identity"
+                else:
+                    error = WorkerError("unsupported_query", "This source cannot search catalog identifiers; use a title or another source")
+                    counters.lastError = error.code
+                    on_error(source, error)
                 continue
             try:
                 search_request = adapter.search_request(query)
@@ -109,7 +112,10 @@ class Matcher:
                                   "search.stoppedReason": stopped_reason}) for candidate in candidates]
                 candidates.sort(key=lambda candidate: (-candidate.confidence, candidate.id, candidate.title))
                 if not candidates:
-                    counters.noMatches += 1
+                    # Failure to inspect a detail (or the unvisited tail) cannot
+                    # establish that this source had no matching metadata.
+                    if not incomplete and not truncated:
+                        counters.noMatches += 1
                     if selected and targets:
                         selected[0].provenance["rejectedFallback"] = f"{source}:identifier_or_title_mismatch"
                     continue

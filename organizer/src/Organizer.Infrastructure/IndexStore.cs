@@ -17,23 +17,31 @@ public sealed class IndexStore : IDisposable
         if (PathSafety.HasLinkComponent(databasePath)) throw new IOException("Index path must not contain a symbolic link.");
         Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
         _connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, Mode = SqliteOpenMode.ReadWriteCreate, DefaultTimeout = 5 }.ToString());
-        _connection.Open();
-        Execute("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
-        var version = Convert.ToInt32(Scalar("PRAGMA user_version;"));
-        if (version > 1) { _connection.Dispose(); throw new InvalidOperationException($"Index schema {version} is newer than supported version 1."); }
-        if (version == 0)
+        try
         {
-            using var tx = _connection.BeginTransaction();
-            Execute("""
-                CREATE TABLE scans(id TEXT PRIMARY KEY, root TEXT NOT NULL, completed_utc TEXT NOT NULL, warnings_json TEXT NOT NULL);
-                CREATE TABLE assets(id TEXT PRIMARY KEY, root TEXT NOT NULL, scan_id TEXT NOT NULL REFERENCES scans(id), fingerprint TEXT NOT NULL, json TEXT NOT NULL);
-                CREATE INDEX ix_assets_root ON assets(root);
-                CREATE TABLE reviews(asset_id TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE, fingerprint TEXT NOT NULL, json TEXT NOT NULL, reviewed_utc TEXT NOT NULL);
-                CREATE TABLE plans(id TEXT PRIMARY KEY, created_utc TEXT NOT NULL, json TEXT NOT NULL, dry_run INTEGER NOT NULL CHECK(dry_run=1));
-                CREATE TABLE tasks(id TEXT PRIMARY KEY, kind TEXT NOT NULL, state TEXT NOT NULL, detail TEXT NOT NULL, updated_utc TEXT NOT NULL);
-                PRAGMA user_version=1;
-                """, tx);
-            tx.Commit();
+            _connection.Open();
+            Execute("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
+            var version = Convert.ToInt32(Scalar("PRAGMA user_version;"));
+            if (version > 1) throw new InvalidOperationException($"Index schema {version} is newer than supported version 1.");
+            if (version == 0)
+            {
+                using var tx = _connection.BeginTransaction();
+                Execute("""
+                    CREATE TABLE scans(id TEXT PRIMARY KEY, root TEXT NOT NULL, completed_utc TEXT NOT NULL, warnings_json TEXT NOT NULL);
+                    CREATE TABLE assets(id TEXT PRIMARY KEY, root TEXT NOT NULL, scan_id TEXT NOT NULL REFERENCES scans(id), fingerprint TEXT NOT NULL, json TEXT NOT NULL);
+                    CREATE INDEX ix_assets_root ON assets(root);
+                    CREATE TABLE reviews(asset_id TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE, fingerprint TEXT NOT NULL, json TEXT NOT NULL, reviewed_utc TEXT NOT NULL);
+                    CREATE TABLE plans(id TEXT PRIMARY KEY, created_utc TEXT NOT NULL, json TEXT NOT NULL, dry_run INTEGER NOT NULL CHECK(dry_run=1));
+                    CREATE TABLE tasks(id TEXT PRIMARY KEY, kind TEXT NOT NULL, state TEXT NOT NULL, detail TEXT NOT NULL, updated_utc TEXT NOT NULL);
+                    PRAGMA user_version=1;
+                    """, tx);
+                tx.Commit();
+            }
+        }
+        catch
+        {
+            _connection.Dispose();
+            throw;
         }
     }
 

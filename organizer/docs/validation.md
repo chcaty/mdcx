@@ -1,6 +1,6 @@
 # Validation record
 
-The record below describes the original Linux-only source candidate. The subsequent Windows installer pipeline and its observed run results are documented separately in [Windows delivery](windows-delivery.md); historical limitations below should not be interpreted as a current CI result.
+The record below describes the original Linux-only source candidate. The subsequent Windows packaging pipeline and its observed run results are documented separately in [Windows delivery](windows-delivery.md); historical limitations below should not be interpreted as a current CI result.
 
 Verified 2026-10-14 UTC on **Debian GNU/Linux 13, x86-64**, with Microsoft .NET SDK **10.0.402** and Python **3.12.14**. This records the final local candidate, not a released product or a live scraping benchmark.
 
@@ -81,3 +81,34 @@ dotnet src/Organizer.Desktop/bin/Release/net10.0/Organizer.Desktop.dll --demo /p
 ```
 
 In the restricted validation environment, SDK/cache/runtime directories were redirected to writable workspace directories and parallel build servers disabled. Normal installations can use their usual .NET SDK/user cache. No OS security configuration was changed to run checks.
+
+## Configurable metadata correction (2026-10-14)
+
+A later local correction starts from delivered `e8c540e156235e716f13888717a905efc522c89a`. The complete Linux aggregate passed with .NET 10.0.402 and Python 3.12.14 plus the exact hash-locked HTTP dependency set:
+
+- Release build: 0 warnings/errors; locked restore and analyzers
+- Core/infrastructure: 56/56 checks, including persistent JSONL session reuse, 8192-query lifetime budget, strict identity/terminal validation, cancellation/stale replies and concurrent shutdown admission
+- Desktop MVVM: 140/140 checks, including explicit save/enable/reset, restart, no automatic query, error semantics and settings changes during in-flight work
+- Actual routed-input views: 28/28 at 1440×900, 30/30 at 1200×800 with 125% text; settings dialog rendering and unverified-online disclosure included
+- Python provider/transport/protocol/quality: 216/216 tests
+- Dependency packaging: 13/13 tests; installer compiler parser: 11/11 checks
+- Ruff, actionlint, PowerShell parsing, compileall, whitespace and negative/positive telemetry preflight
+- Independent transport/identity/configuration/packaging and final concurrency review, with both discovered shutdown races fixed and retained as regressions
+
+The persistent-session implementation owner additionally ran three final 56/56 repeats, each including the full 8192-query stress and 24 concurrent admission/disposal iterations across both modes. This is a bounded correctness stress, not a throughput claim.
+
+The desktop integration starts the real JSONL entrypoint with an explicitly saved temporary configuration, injects HTTPX MockTransport, parses neutral HTML, returns candidates and checks UI state. Two matches reuse one worker PID. Socket/DNS guards prohibit external requests. Missing page identity for the unchanged `BF-658` query produces a parsing failure with zero candidates. No metadata for that identifier was invented or retrieved online.
+
+The updated Windows portable ZIP must pass its own CI run: it bundles isolated Python plus seven pinned HTTP wheels and tests both native Win32 demo startup and a bundled neutral HTTP mock probe, plus adjacent data ownership, upgrade retention and clear startup errors. The older installer/uninstall record is separate. Refer to that run's artifact reports for actual Windows results. Linux checks alone do not establish Windows installation or live-source availability. No source site, images, credentials or real media were used by this correction's verification.
+
+## Portable delivery correction (2026-10-14)
+
+The user requested a portable build instead of an installer. The final local Linux checks for this additional change passed with the same SDK, Python and locked dependencies:
+
+- Core/infrastructure: 56/56
+- Desktop MVVM: 196/196, including portable path ownership, malformed/duplicate marker and manifest handling, linked data/SQLite sidecars, writable checks, preservation, future-schema refusal and explicit diagnostic isolation
+- Actual Headless routed-input: 31/31 normal, 33/33 small/125% text; readable startup error rendering and nonzero diagnostic failures
+- Python: 216/216; dependency packaging: 13/13; portable archive/layout: 55/55; retained installer parser: 11/11
+- Independent portable resolver/adversarial checks: 46/46; independent archive suite: 55/55; final code and visual review passed
+
+The ZIP uses an explicit marker and fixed adjacent data, does not contain user data, and does not require the optional Inno installer path. A manifest-identified portable build refuses a missing marker instead of switching to installed storage. Native Windows CI is responsible for the actual extracted build, Unicode/space paths, worker, startup/error screenshots, readonly ACL/data junction failures, upgrade preservation and absence of installation registration/shortcuts. Refer to the exact successful run before claiming those native checks passed. No live-source or BF-658 online verification is included.

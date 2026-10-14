@@ -14,7 +14,8 @@ namespace Organizer.Desktop;
 
 public partial class MainWindow : Window
 {
-    private bool _pickerOpen;
+    private bool _pickerOpen, _closingAfterCleanup, _cleanupStarted;
+    internal SourceSettingsWindow? ActiveSourceSettings { get; private set; }
     private AssetRow? _mediaSelectionBeforePlan;
     private WorkbenchViewModel? ViewModel => DataContext as WorkbenchViewModel;
 
@@ -28,7 +29,19 @@ public partial class MainWindow : Window
         CenterScroller.SizeChanged += (_, _) => UpdateResponsiveLayout();
         Opened += OnOpened;
         KeyDown += OnKeyDown;
+        Closing += OnClosing;
         Closed += (_, _) => ViewModel?.Cancel();
+    }
+
+    private async void OnClosing(object? sender, WindowClosingEventArgs args)
+    {
+        if (_closingAfterCleanup || ViewModel is not { } vm) return;
+        args.Cancel = true;
+        if (_cleanupStarted) return;
+        _cleanupStarted = true;
+        IsEnabled = false;
+        try { await vm.DisposeAsync(); }
+        finally { _closingAfterCleanup = true; Close(); }
     }
 
     private static void ApplyFontScale()
@@ -47,8 +60,8 @@ public partial class MainWindow : Window
         UpdateResponsiveLayout();
         if (Program.Options.SmokeTestView)
         {
-            try { Environment.ExitCode = await Diagnostics.ViewInteractionSmoke.RunAsync(this, vm); }
-            catch (Exception ex) { Console.Error.WriteLine($"View smoke failed: {ex}"); Environment.ExitCode = 1; }
+            try { Program.DiagnosticExitCode = await Diagnostics.ViewInteractionSmoke.RunAsync(this, vm); }
+            catch (Exception ex) { Console.Error.WriteLine($"View smoke failed: {ex}"); Program.DiagnosticExitCode = 1; }
             finally { Close(); }
             return;
         }
@@ -72,7 +85,7 @@ public partial class MainWindow : Window
                 bitmap.Save(Path.GetFullPath(screenshot));
             }, DispatcherPriority.Render);
         }
-        catch (Exception ex) { Console.Error.WriteLine($"Screenshot failed: {ex.Message}"); Environment.ExitCode = 1; }
+        catch (Exception ex) { Console.Error.WriteLine($"Screenshot failed: {ex.Message}"); Program.DiagnosticExitCode = 1; }
         finally { Close(); }
     }
 
@@ -204,6 +217,15 @@ public partial class MainWindow : Window
         if (args.Source is Button || args.Source is Visual visual && visual.GetVisualAncestors().OfType<Button>().Any() || !args.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
         if (args.ClickCount == 2) WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
         else BeginMoveDrag(args);
+    }
+
+    private async void ShowSourceSettings(object? sender, RoutedEventArgs args)
+    {
+        if (ActiveSourceSettings is not null || ViewModel is not { } vm) return;
+        var dialog = new SourceSettingsWindow(vm);
+        ActiveSourceSettings = dialog;
+        try { await dialog.ShowDialog(this); }
+        finally { ActiveSourceSettings = null; }
     }
 
     private async void ChooseSource(object? sender, RoutedEventArgs args) => await ChooseFolderAsync(false);

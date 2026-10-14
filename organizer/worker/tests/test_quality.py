@@ -170,17 +170,19 @@ class QualityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((result[0].id, result[0].sourceId, result[0].source), ("DEMO-002", "1002", "xcity"))
 
     async def test_missing_year_not_filled_by_unproven_tpdb_identity(self):
-        matcher = self.matcher()
-        result = (await matcher.match("DEMO-006"))[0]
+        matcher, errors = self.matcher(), []
+        result = (await matcher.match("DEMO-006", on_error=lambda source, error: errors.append((source, error.code))))[0]
         self.assertEqual((result.title, result.year, result.source), ("The Quiet Observatory", None, "xcity"))
         self.assertEqual(result.provenance["field.year.source"], "xcity")
         self.assertIn("no_comparable_catalog_identity", result.provenance["rejectedFallback"])
         self.assertTrue(all(call.source == "xcity" for call in matcher.scheduler.transport.calls))
+        self.assertEqual(errors, [])
+        self.assertEqual(matcher.scheduler.counters("theporndb_movies").noMatches, 0)
 
     async def test_conflicting_detail_identifier_errors_without_wrong_id_fallback(self):
         errors = []
         result = await self.matcher().match("DEMO-005", on_error=lambda s, e: errors.append((s, e.code)))
-        self.assertEqual(errors, [("xcity", "identity_mismatch")])
+        self.assertEqual(errors, [("xcity", "identity_mismatch"), ("theporndb_movies", "unsupported_query")])
         self.assertEqual(result, [])
 
     async def test_title_only_ambiguity_keeps_both_for_review(self):
@@ -191,8 +193,12 @@ class QualityTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("ambiguous_candidates", candidate.payload()["reviewReasons"])
             self.assertIn("missing_catalog_identifier", candidate.payload()["reviewReasons"])
 
-    async def test_no_match_is_empty_and_deterministic(self):
-        self.assertEqual(await self.matcher().match("No Such Fictional Film"), [])
+    async def test_declared_negative_example_is_empty_without_source_errors(self):
+        subject, errors = self.matcher(), []
+        self.assertEqual(await subject.match("No Such Fictional Film", on_error=lambda source, error: errors.append((source, error.code))), [])
+        self.assertEqual(errors, [])
+        self.assertEqual({source: health.noMatches for source, health in subject.scheduler.health.items()},
+                         {"xcity": 1, "theporndb_movies": 1})
 
     async def test_title_provenance_uses_detail_object_and_search_evidence(self):
         result = (await self.matcher().match("Harbor of Stars", ("theporndb_movies",)))[0]

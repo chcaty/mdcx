@@ -7,6 +7,10 @@ $env:MSBUILDDISABLENODEREUSE = '1'
 $env:ORGANIZER_PYTHON = 'python'
 $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
+python packaging/windows/bundle_python_dependencies.py --check-only --check-installed --requirements worker/requirements-live.txt
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+python -m unittest discover -s packaging/windows -p 'test_*.py' -v
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
 dotnet restore MediaOrganizer.sln --locked-mode --disable-parallel --disable-build-servers -m:1
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 dotnet build MediaOrganizer.sln -c Release --no-restore --disable-build-servers -m:1

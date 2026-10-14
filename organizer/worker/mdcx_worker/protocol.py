@@ -39,7 +39,7 @@ def _reject_constant(_):
     raise ValueError("Nonfinite JSON number")
 
 
-def parse_line(raw: bytes) -> Command:
+def parse_line(raw: bytes, *, allowed_sources: tuple[str, ...] = DEFAULT_SOURCES) -> Command:
     if len(raw) > MAX_LINE_BYTES:
         raise WorkerError("request_too_large", "Request exceeds 16 KiB")
     try:
@@ -63,9 +63,9 @@ def parse_line(raw: bytes) -> Command:
     query = value.get("query")
     if not isinstance(query, str) or not query.strip() or len(query) > 256 or any(unicodedata.category(c) in {"Cc", "Cs"} for c in query):
         raise WorkerError("invalid_request", "query must contain 1–256 printable characters")
-    sources = value.get("sources", list(DEFAULT_SOURCES))
-    if (not isinstance(sources, list) or not sources or len(sources) > len(DEFAULT_SOURCES)
-        or any(not isinstance(source, str) or source not in DEFAULT_SOURCES for source in sources)
+    sources = value.get("sources", list(allowed_sources))
+    if (not isinstance(sources, list) or not sources or len(sources) > len(allowed_sources)
+        or any(not isinstance(source, str) or source not in allowed_sources for source in sources)
         or len(set(sources)) != len(sources)):
         raise WorkerError("invalid_sources", "sources must be a unique ordered list of migrated sources")
     return Command(request_id, command, query.strip(), tuple(sources))

@@ -1,43 +1,59 @@
-# Windows build and installer pipeline
+# Windows portable build and verification pipeline
 
-The separate `.github/workflows/organizer-windows.yml` workflow validates and packages only the new `organizer/` application. It never publishes a GitHub Release, tag, package registry entry, or deployment, and it does not modify the legacy application's workflows.
+The independent `.github/workflows/organizer-windows.yml` validates and packages the new `organizer/` application. Its default deliverable is a portable Windows x64 ZIP, not an installer. It does not publish a GitHub Release, tag, package-registry entry or deployment, and it does not change the legacy application's workflows.
 
 ## Triggers and trust
 
 - Pushes to `feat/media-organizer-workbench-20261014` affecting `organizer/**` or this workflow run automatically.
-- Pull requests into that branch, `master`, or `develop` run on opened, synchronize, reopened, and ready-for-review events for the same paths. No PR is created by the workflow.
-- A `workflow_dispatch` entry is included. GitHub only exposes manual dispatch when the workflow is present on the default branch; this feature-only delivery does not change `master` to enable that UI. Push is the working initial trigger.
-- Checkout credentials are not persisted. The token has `contents: read`; there are no secrets or signing credentials. Third-party actions are pinned to full commit SHAs. New commits cancel superseded runs of this workflow/ref.
-- Tests use generated temporary media and strict offline parser fixtures. Package restoration and official build-time downloads use the network; the scraper tests and installed application do not crawl providers.
+- Pull requests into that branch, `master` or `develop` run on opened, synchronize, reopened and ready-for-review events for the same paths. No PR is created by this workflow.
+- Manual dispatch is declared, but GitHub exposes it only when the workflow is on the default branch. This feature-branch delivery does not change `master`; push is the active trigger.
+- Checkout credentials are not persisted. The token has `contents: read`, no secrets/signing credentials are used, and actions are pinned to full commit SHAs. New commits cancel superseded runs of this workflow/ref.
+- PowerShell, .NET SDK and Avalonia telemetry opt-outs are set in the job environment before their processes start. Avalonia's separate environment-variable requirement also has negative/positive preflight tests.
+- Official package restoration/build-time downloads use the network. Metadata tests use temporary fictional media and strict fixtures/injected HTTP, never source-site crawling. The application sends a source query only after the user explicitly saves/enables that source and starts a match.
 
-## What a successful run proves
+## Download and run
 
-1. Linux and Windows execute the complete Core/infrastructure, MVVM, Headless routed-input, and Python regression suites with Release compiler/analyzers and isolated Ruff lint.
-2. The actual environment-variable requirement for Avalonia's documented telemetry opt-out is tested negatively and positively, without invoking its statistics task in the negative test.
-3. Windows publishes a self-contained x64 .NET application. Portable and Windows RID dependency graphs have separate checked-in NuGet locks; both restore in locked mode.
-4. The package includes the pinned official CPython embedded runtime, standard library, worker modules, neutral HTML/JSON fixtures, and license notices. No separate .NET/Python installation, pip, login, or provider credentials are needed at runtime.
-5. The per-user installer is installed in an isolated test location. The installed `.exe`, launched from a different working directory, starts a real Win32 Avalonia window and matches a neutral fixture through the bundled Python process. The native smoke records its interpreter, worker, window handle, rendered PNG, isolated index, safe preview and unchanged source bytes.
-6. Uninstall is tested without deleting the user's application data or media. The installer does not silently launch the app after installation.
+Download **MDCxOrganizer-…-win-x64-portable.zip** from the successful **Organizer Windows CI** run. The pinned upload-artifact v7 action uses `archive: false`, so this is the actual portable ZIP, not another ZIP wrapped around it. Extract the complete archive into a writable folder and run `Organizer.Desktop.exe`. The archive root contains the executable, private .NET/Python runtimes, `worker/`, `portable.json`, `package-manifest.json`, readme and licenses. No separate .NET/Python installation, pip download, administrator access, registry registration or shortcut is required.
 
-A workflow definition alone is not proof of a passing build. See the specific Actions run and its diagnostics for observed results. The previous Linux-only record in `validation.md` remains historical; Windows coverage comes from an actual successful run of this new pipeline.
+Keep the portable marker and all program files together. The application uses `data/index.db` and `data/metadata-source.json` beside the executable. A missing/invalid marker on a manifest-identified portable package, linked/unsafe data files, or an unwritable data directory produces a startup error; it does not silently load installed-app data.
 
-## Download and install
+The app executable is **unsigned**. Verify the downloaded archive and SHA-256 from the same run before deciding to launch it. Windows may show an unknown-publisher/security warning; no certificate or reputation is claimed, and security warnings are not bypassed.
 
-Open the successful **Organizer Windows CI** run and download its **MDCxOrganizer-…-win-x64-setup.exe** artifact. The pinned official upload-artifact v7 action uses `archive: false`, so the installer is available directly as an `.exe`, without a ZIP wrapper. The separate **MDCx-Organizer-Windows-x64-information-…** ZIP contains its SHA-256, package manifest and readme. A directly shared installer attachment contains the same `.exe` bytes.
+## Upgrade and remove
 
-The installer is **unsigned**. No signing certificate or reputation is claimed; Windows may show an unknown-publisher or security warning. Verify the download source and supplied SHA-256 before deciding whether to install. The assistant does not bypass those warnings. Installation is per-user and does not require administrator access.
+1. Close the running app and back up the entire `data/` folder.
+2. Extract the new program files over the old program directory while retaining `data/`, or extract into a new directory and copy your backed-up `data/` into it.
+3. Start the new executable. The archive deliberately contains no `data/` subtree, so unpacking its program files cannot replace the index/settings.
 
-The installed application remains **preview-only and fixture-only**. Matching results are synthetic demonstrations, not real film metadata. There is no real move/rename/delete executor, live scraper, auto-update, or crash-recovery journal. Uninstall retains `%LOCALAPPDATA%\MDCxOrganizer` and never removes media. Full manual desktop interaction, Windows junction/reparse behavior (existing link checks skip Windows), other Windows editions/hardware, Windows ARM64, macOS, and live-source behavior are not established by the Windows Server 2022 x64 runner.
+The application has no updater or automatic migration from the older installed edition. Installed `%LOCALAPPDATA%\MDCxOrganizer` data stays untouched. Removing a portable folder is a user-managed deletion and also removes any `data/` inside it; back up what you want to retain. No uninstaller or media cleanup is run.
+
+## What successful CI proves
+
+1. Linux and Windows execute the full Core/infrastructure, desktop MVVM, actual Headless routed-input and Python suites with Release analyzers, locked restores and lint.
+2. Windows publishes a self-contained x64 .NET application using a separate locked RID graph.
+3. The package includes a pinned official embedded CPython runtime, standard library and seven exact hash-locked HTTP dependency wheels, including the CA bundle and licenses. Its `_pth` keeps imports isolated; no runtime pip/download or ambient PYTHONPATH is used.
+4. The portable archive has the expected root layout and no user `data/` content. CI extracts it into a temporary path containing spaces and Chinese characters.
+5. The extracted app opens a real Win32 Avalonia window from an unrelated working directory, uses its bundled worker/interpreter and matches neutral fixtures. Its native smoke records the HWND, screenshot, isolated test index and unchanged synthetic source bytes.
+6. Separate startup probes verify actual adjacent portable storage, clear failure for unwritable data and missing marker, and no fallback to an installed data location. Upgrade/re-extraction checks preserve data and source settings.
+7. A bundled HTTP probe checks dependency paths, disabled defaults and HTTPX MockTransport → JavBus parser with socket/DNS guards and hostile ambient proxy/CA variables. It does not verify live-source access.
+
+Read the reports for the exact run; a workflow file or Linux run alone is not proof of native Windows acceptance. New portable coverage supersedes only the corresponding packaging limitations in the historical `validation.md` record.
+
+## Source and product limits
+
+The old published e8c540e installer is fixture-only and does not contain this correction. The updated source has an explicit demo/real-source settings entry, a persistent worker and configured HTTP transport. Demo records are synthetic; the configured provider's current live-page structure, availability and catalog coverage remain unverified. No online lookup was performed for BF-658, and no successful match for it is claimed. Only identifier/title/optional year are supported by this provider; authentication, posters and all-source parity are not implemented.
+
+Media organization remains **preview-only**: no move/rename/delete executor, NFO/image writing, crash-recovery journal or auto-update exists. The Windows Server 2022 x64 runner does not establish behavior on every Windows 10/11 device, Windows ARM64, macOS, or full manual desktop use. Source/index paths may be private; protect your portable `data/` folder.
 
 ## Reproduce
 
-On a Windows x64 development machine with .NET SDK 10.0.402 and Inno Setup 6 installed from their official sources:
+Set `POWERSHELL_TELEMETRY_OPTOUT=1` in the parent environment **before starting PowerShell**, as required by [PowerShell's official telemetry documentation](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_telemetry). On a disposable Windows x64 development machine with .NET SDK 10.0.402 and Python:
 
 ```powershell
+python -m pip --isolated install --require-hashes --only-binary=:all: --no-deps -r organizer/worker/requirements-live.txt
 pwsh -NoProfile -File ./organizer/scripts/check.ps1
-pwsh -NoProfile -File ./organizer/scripts/package-windows.ps1 -BuildLabel local
-# Only in a disposable Windows user account:
-pwsh -NoProfile -File ./organizer/scripts/test-windows-package.ps1 -Installer C:\absolute\path\to\Setup.exe -AllowNonCi
+pwsh -NoProfile -File ./organizer/scripts/package-windows.ps1 -PackageKind portable -BuildLabel local
+pwsh -NoProfile -File ./organizer/scripts/test-windows-portable.ps1 -Archive C:\absolute\path\to\portable.zip -AllowNonCi
 ```
 
-The scripts set both .NET SDK and Avalonia telemetry opt-outs. The packaging script verifies the embedded Python archive against its pinned SHA-256 before extraction and uses the preinstalled Inno compiler rather than bootstrapping an installer. Outputs and diagnostics are under the ignored `organizer/artifacts/` directory. CI retains installer artifacts for 30 days and diagnostics for 14 days; they are not a permanent Release distribution.
+Portable packaging does not require Inno Setup. The older installer remains an optional developer-only `-PackageKind installer` path requiring the official preinstalled Inno Setup 6 compiler; it is no longer the default CI deliverable. Outputs/logs are in ignored `organizer/artifacts/`. CI retains portable downloads for 30 days and diagnostics for 14 days, not permanently as a Release.

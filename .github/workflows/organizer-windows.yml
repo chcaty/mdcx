@@ -22,6 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  POWERSHELL_TELEMETRY_OPTOUT: '1'
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
   AVALONIA_TELEMETRY_OPTOUT: '1'
   DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
@@ -56,7 +57,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
-      - name: Offline aggregate (only generated media and fixture replay)
+      - name: Install hash-locked official HTTP test dependencies
+        run: |
+          python -m pip --isolated install --require-hashes --only-binary=:all: --no-deps -r organizer/worker/requirements-live.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Offline aggregate (generated media, fixtures, and mock HTTP only)
         run: |
           New-Item -ItemType Directory -Force organizer/artifacts/ci | Out-Null
           & pwsh -NoProfile -File ./organizer/scripts/check.ps1 *> organizer/artifacts/ci/checks.log
@@ -76,15 +81,19 @@ jobs:
           }
           dotnet msbuild $project -t:RequireAvaloniaTelemetryOptOut -p:UsedAvaloniaProducts=Organizer *> organizer/artifacts/ci/telemetry-positive.log
           if ($LASTEXITCODE) { Get-Content organizer/artifacts/ci/telemetry-positive.log; exit $LASTEXITCODE }
-      - name: Installer compiler parser regression
+      - name: Portable layout and optional installer parser regression
         run: |
+          & pwsh -NoProfile -File organizer/packaging/windows/test-portable-layout.ps1 *> organizer/artifacts/ci/portable-layout.log
+          $result = $LASTEXITCODE
+          Get-Content organizer/artifacts/ci/portable-layout.log
+          if ($result -ne 0) { exit $result }
           pwsh -NoProfile -File organizer/packaging/windows/test-inno-compiler.ps1
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Python lint and patch whitespace
         run: |
           python -m pip install --disable-pip-version-check ruff==0.12.5
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python -m ruff check organizer/worker organizer/scripts --isolated
+          python -m ruff check organizer/worker organizer/scripts organizer/packaging/windows --isolated
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           git diff --check
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -97,8 +106,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  windows-installer:
-    name: Build and verify unsigned Windows installer
+  windows-portable:
+    name: Build and verify Windows portable ZIP
     needs: verify
     runs-on: windows-2022
     timeout-minutes: 30
@@ -114,50 +123,45 @@ jobs:
           dotnet-version: '10.0.402'
           cache: true
           cache-dependency-path: organizer/**/packages*.lock.json
-      - name: Package self-contained app, embedded Python and per-user installer
+      - name: Package self-contained app and embedded Python in a portable ZIP
         id: package
         run: |
           New-Item -ItemType Directory -Force organizer/artifacts/ci | Out-Null
-          & pwsh -NoProfile -File ./organizer/scripts/package-windows.ps1 -BuildLabel "ci-$env:GITHUB_RUN_NUMBER-$env:GITHUB_RUN_ATTEMPT" *> organizer/artifacts/ci/package.log
+          & pwsh -NoProfile -File ./organizer/scripts/package-windows.ps1 -PackageKind portable -BuildLabel "ci-$env:GITHUB_RUN_NUMBER-$env:GITHUB_RUN_ATTEMPT" *> organizer/artifacts/ci/package.log
           $result = $LASTEXITCODE
           Get-Content organizer/artifacts/ci/package.log
           if ($result -ne 0) { exit $result }
-      - name: Install, native startup, bundled worker and data-preserving uninstall
+      - name: Extract, native startup, bundled worker, portable data and upgrade checks
         env:
-          INSTALLER_PATH: ${{ steps.package.outputs.installer }}
+          PORTABLE_ZIP: ${{ steps.package.outputs.portable_zip }}
         run: |
-          & pwsh -NoProfile -File ./organizer/scripts/test-windows-package.ps1 -Installer $env:INSTALLER_PATH *> organizer/artifacts/ci/installer-test.log
+          & pwsh -NoProfile -File ./organizer/scripts/test-windows-portable.ps1 -Archive $env:PORTABLE_ZIP *> organizer/artifacts/ci/portable-test.log
           $result = $LASTEXITCODE
-          Get-Content organizer/artifacts/ci/installer-test.log
+          Get-Content organizer/artifacts/ci/portable-test.log
           if ($result -ne 0) { exit $result }
-      - name: Upload verified installer
-        id: installer
+      - name: Upload one verified portable ZIP directly
+        id: portable
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          path: ${{ steps.package.outputs.installer }}
+          path: ${{ steps.package.outputs.portable_zip }}
           archive: false
-          if-no-files-found: error
-          retention-days: 30
-      - name: Upload installer verification metadata
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: MDCx-Organizer-Windows-x64-information-${{ github.run_number }}
-          path: |
-            organizer/artifacts/windows/SHA256SUMS.txt
-            organizer/artifacts/windows/README-WINDOWS.txt
-            organizer/artifacts/windows/package-manifest.json
           if-no-files-found: error
           retention-days: 30
       - name: Delivery summary
         env:
-          ARTIFACT_URL: ${{ steps.installer.outputs.artifact-url }}
+          ARTIFACT_URL: ${{ steps.portable.outputs.artifact-url }}
+          PACKAGE_SHA256: ${{ steps.package.outputs.sha256 }}
         run: |
           @"
-          ## Windows x64 installer
-          - Verified unsigned per-user installer: $env:ARTIFACT_URL
-          - Includes self-contained .NET runtime, embedded Python and offline fixture worker.
-          - Preview-only. No real media execution or live scraping.
-          - Installer/uninstaller smoke uses generated temporary data, not user media.
+          ## Windows x64 portable ZIP
+          - Verified directly downloadable ZIP: $env:ARTIFACT_URL
+          - SHA-256: $env:PACKAGE_SHA256
+          - Extract once to a writable folder and run Organizer.Desktop.exe. No installer, registry or shortcut setup.
+          - Program-adjacent data stays in data/. Close the app and back up data/ before replacing program files.
+          - Includes self-contained .NET, isolated embedded Python, and hash-locked HTTP dependencies.
+          - Preview-only; metadata networking defaults off. CI uses only fixtures and injected HTTP responses; no live source was verified.
+          - Native Windows checks cover Chinese/space paths, bundled worker, read-only/junction errors, missing marker, and data-preserving overwrite upgrade.
+          - Tests use generated temporary data, never user media. README and manifest are inside the ZIP.
           - No signing certificate, release, tag, auto-update or deployment is used.
           "@ >> $env:GITHUB_STEP_SUMMARY
       - name: Preserve packaging and native smoke logs

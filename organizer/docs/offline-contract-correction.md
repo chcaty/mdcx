@@ -1,5 +1,7 @@
 # Offline source contract correction
 
+Historical implementation/audit record. Later configured-source and portable-delivery changes are documented in [architecture](architecture.md), [validation](validation.md) and [Windows delivery](windows-delivery.md); the scope statements below describe their recorded baseline.
+
 Baseline preserved: `e289bc88e951a3c599b61a271bac9571ae7e48db`.
 
 ## Why this correction is required

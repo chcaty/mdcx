@@ -114,15 +114,15 @@ internal sealed class PackageSmoke
         return result;
     }
 
-    private static string ReadReportPath(string[] args)
+    internal static string ReadReportPath(string[] args, string modeFlag = "--smoke-test-package", string reportFlag = "--package-smoke-report")
     {
         string? path = null;
         var modeCount = 0;
         for (var i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--smoke-test-package") { modeCount++; continue; }
-            if (args[i] == "--package-smoke-report" && path is null && i + 1 < args.Length) { path = args[++i]; continue; }
-            throw new ArgumentException("Package smoke accepts only --smoke-test-package --package-smoke-report <new absolute .json path under system or runner temp>.");
+            if (args[i] == modeFlag) { modeCount++; continue; }
+            if (args[i] == reportFlag && path is null && i + 1 < args.Length) { path = args[++i]; continue; }
+            throw new ArgumentException($"Startup diagnostics accept only {modeFlag} {reportFlag} <new absolute .json path under system or runner temp>.");
         }
         if (modeCount != 1 || path is null || !Path.IsPathFullyQualified(path) || Path.GetExtension(path) != ".json")
             throw new ArgumentException("Package smoke requires one explicit new absolute .json report path under system or runner temp.");

@@ -24,6 +24,7 @@ public sealed class AssetRow : ObservableObject
     internal bool MatchAttempted { get; set; }
     internal bool HasManualEdits { get; set; }
     internal string MatchFailure { get; set; } = "";
+    internal string MatchFailureCode { get; set; } = "";
     internal bool SnapshotInvalidated { get; set; }
     internal string QueryOverride { get; set; } = "";
     internal string DraftIdentifier { get; set; } = "";
@@ -54,6 +55,8 @@ public sealed class AssetRow : ObservableObject
         (MatchAttempted && CachedCandidates.Count == 0) || (!MatchAttempted && Asset.Warnings.Count > 0) ? "需检查" : "待审核";
     public string EvidenceSummary => SnapshotInvalidated ? "源文件已变化 · 请重新扫描" : HasUnsavedEdits ? "资料已修改 · 需重新确认" :
         Review is not null ? Review.Origin == "manual" ? "人工确认 · 手动资料" : $"人工确认 · {EvidenceSource}" :
+        MatchFailureCode == "live_unavailable" ? "来源未启用或不可用" :
+        MatchFailureCode == "unsupported_query" ? "所选来源不支持此检索类型" :
         !string.IsNullOrEmpty(MatchFailure) ? "识别失败 · 可重试" : CachedCandidates.Count > 1 && CachedSelection is null ? $"标题检索 · {CachedCandidates.Count} 个候选" :
         CachedSelection?.Confidence ?? (MatchAttempted ? "未找到候选" : "尚未识别");
     private string EvidenceSource => CachedSelection?.Candidate.Source ?? (Review?.Provenance.TryGetValue("providerIdentity.source", out var source) == true ? source : "保留来源证据");
@@ -122,9 +125,9 @@ public sealed record CandidateRow(MetadataCandidate Candidate)
     public string Title => Candidate.Title;
     public string Detail => $"{Candidate.Year?.ToString() ?? "年份未知"} · {Candidate.Source} · {Identity}";
     public string Identity => Candidate.CatalogIdentifier is { } catalog ? $"{catalog.Namespace}: {catalog.Value}" : $"来源 ID: {Candidate.SourceId} · 无番号";
-    public string Confidence => Candidate.CatalogIdentifier is { Namespace: "xcity:hinban" } &&
+    public string Confidence => Candidate.CatalogIdentifier is { Namespace: "xcity:hinban" or "javbus:catalog" } &&
         Candidate.Provenance.TryGetValue("matchMethod", out var method) && method == "exact_identifier"
-        ? "番号一致 · xcity" : $"标题候选 · {Candidate.Source}";
+        ? $"番号一致 · {Candidate.Source}" : $"标题候选 · {Candidate.Source}";
     public string Provenance => string.Join("\n", Candidate.Provenance.Select(x => $"{x.Key}: {x.Value}"));
 }
 

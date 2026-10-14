@@ -4,20 +4,29 @@ using System.Globalization;
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using Organizer.Core;
+using Organizer.Desktop.Configuration;
 using Organizer.Infrastructure;
 
 namespace Organizer.Desktop.ViewModels;
 
 /// <summary>Single-user preview workbench. No filesystem mutation service is exposed here.</summary>
-public sealed class WorkbenchViewModel : ObservableObject, IDisposable
+public sealed class WorkbenchViewModel : ObservableObject, IDisposable, IAsyncDisposable
 {
     public const int MaximumBatchSize = 50;
     private const string AutoSource = "自动（xcity → TPDB）";
+    private const string LiveUnavailableMessage = "演示模式仅支持离线样例；真实来源未启用。可在“配置来源”中启用，或手动填写资料后审核。";
+    private const string UnsupportedQueryMessage = "所选来源不支持此检索类型。TPDB 影片不支持番号检索，请输入片名查询，或选择支持番号的来源。";
     private const string SnapshotKey = MediaSnapshot.ProvenanceKey;
     private readonly StartupOptions _options;
     private readonly MediaScanner _scanner = new();
     private readonly PathPlanner _planner = new();
-    private readonly PythonScraperClient _scraper;
+    private IMetadataClient _scraper;
+    private readonly Func<string?, IMetadataClient> _clientFactory;
+    private readonly MetadataSettingsStore _settingsStore;
+    private MetadataSourceSettings _sourceSettings = new();
+    private string _sourceStatus = "未配置";
+    private readonly List<Task> _clientShutdowns = [];
+    private Task? _disposeTask;
     private readonly List<AssetRow> _allAssets = [];
     private readonly List<string> _reviewQueue = [];
     private readonly HashSet<string> _invalidatedReviews = [];
@@ -44,10 +53,20 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     private string _planStatus = "尚未生成计划", _candidateStatus = "选中文件后识别，或手动填写资料。";
     private string _indexStatus = "本地索引", _planIssues = "", _draftStatus = "选中文件后查看命名草案。", _draftIssues = "";
 
-    public WorkbenchViewModel(StartupOptions options)
+    internal ApplicationDataLocation DataLocation { get; }
+
+    public WorkbenchViewModel(StartupOptions options, Func<string?, IMetadataClient>? clientFactory = null)
     {
         _options = options;
-        _scraper = new PythonScraperClient(options.PythonExecutable, options.ResolveWorkerPath());
+        _clientFactory = clientFactory ?? (config => new PythonScraperClient(options.PythonExecutable, options.ResolveWorkerPath(), config));
+        DataLocation = options.ResolveDataLocation();
+        DataLocation.EnsureWritable();
+        var indexPath = DataLocation.IndexPath;
+        _settingsStore = new MetadataSettingsStore(DataLocation.SettingsPath);
+        try { _sourceSettings = _settingsStore.Load(); }
+        catch (InvalidDataException ex) { AddLog("来源", ex.Message); }
+        _sourceStatus = _sourceSettings.NetworkEnabled ? "已配置 · 尚未查询" : "未配置";
+        if (_sourceSettings.NetworkEnabled) _selectedMatchSource = "JavBus";
         ScanCommand = new(ScanAsync, () => IsIdle && !string.IsNullOrWhiteSpace(SourcePath));
         MatchCommand = new(MatchAsync, () => IsIdle && HasSelection);
         MatchCheckedCommand = new(MatchCheckedAsync, () => IsIdle && HasCheckedAssets);
@@ -66,17 +85,17 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         NextAssetCommand = new(() => NavigateAsset(1), () => IsIdle && CanNavigate(1));
         try
         {
-            var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (string.IsNullOrWhiteSpace(local)) local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
-            _store = new IndexStore(options.IndexPath ?? Path.Combine(local, "MDCxOrganizer", "index.db"));
+            _store = new IndexStore(indexPath);
         }
         catch (Exception ex)
         {
+            if (DataLocation.IsPortable) throw DataLocation.IndexUnavailable(ex);
             _indexStatus = "索引不可用 · 本次会话可继续";
             AddLog("警告", $"无法打开本地索引：{ex.Message}");
         }
+        _scraper = _clientFactory(_sourceSettings.NetworkEnabled ? _settingsStore.Path : null);
         AddLog("就绪", "只读预览。扫描、识别与审核不会移动、改名或覆盖媒体文件。");
-        AddLog("来源", "候选来自虚构离线样例；未连接实时站点。每个条目都需要人工确认。");
+        AddLog("来源", SourceDescription);
     }
 
     public ObservableCollection<AssetRow> Assets { get; } = [];
@@ -86,7 +105,44 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     public ObservableCollection<LogEntry> Logs { get; } = [];
     public IReadOnlyList<string> Filters { get; } = ["全部文件", "待审核", "已审核", "需检查"];
     public IReadOnlyList<string> SearchModes { get; } = ["自动", "标题", "番号"];
-    public IReadOnlyList<string> MatchSources { get; } = [AutoSource, "xcity", "TPDB（影片）"];
+    public IReadOnlyList<string> MatchSources => IsRealSource ? ["JavBus"] : [AutoSource, "xcity", "TPDB（影片）"];
+    public bool IsRealSource => _sourceSettings.NetworkEnabled;
+    public string SourceModeLabel => IsRealSource ? "真实来源 · JavBus" : "演示 · 离线样例";
+    public string SourceStatus { get => _sourceStatus; private set => Set(ref _sourceStatus, value); }
+    public string SourceDescription => IsRealSource
+        ? "仅点击检索或识别所选时，向 JavBus 发送当前番号查询；暂不支持片名查询。资料仍需人工核对。"
+        : "只查询随应用提供的虚构离线样例。真实来源未启用。";
+    public string ArtworkDescription => "本地示意图 · 非来源海报";
+    public SourceSettingsViewModel BeginSourceSettings() => new(_sourceSettings);
+
+    public bool SaveSourceSettings(SourceSettingsViewModel draft)
+    {
+        if (_disposed || !draft.TryBuild(out var settings)) return false;
+        return ApplySourceSettings(settings, draft);
+    }
+    public bool ResetSourceSettings(SourceSettingsViewModel draft) => !_disposed && ApplySourceSettings(new(), draft);
+    private bool ApplySourceSettings(MetadataSourceSettings settings, SourceSettingsViewModel draft)
+    {
+        try { _settingsStore.Save(settings); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        { draft.Error = "配置未保存。请检查本地数据目录的写入权限；当前来源保持不变。"; return false; }
+        // Only this explicit save/reset path changes source permission. No query is started.
+        InvalidateSearchInputs(allRows: true);
+        var previous = _scraper;
+        _sourceSettings = settings;
+        _scraper = _clientFactory(settings.NetworkEnabled ? _settingsStore.Path : null);
+        _clientShutdowns.RemoveAll(task => task.IsCompleted);
+        _clientShutdowns.Add(RetireClientAsync(previous));
+        _selectedMatchSource = IsRealSource ? "JavBus" : AutoSource;
+        SourceStatus = IsRealSource ? "已配置 · 尚未查询" : "未配置";
+        foreach (var property in new[] { nameof(IsRealSource), nameof(SourceModeLabel), nameof(SourceDescription), nameof(MatchSources), nameof(SelectedMatchSource) }) Raise(property);
+        if (SelectedAsset is { } row) CandidateStatus = CandidateMessage(row);
+        Status = IsRealSource ? "真实来源配置已保存。点击检索后才会发出网络请求。" : "已保存演示模式。真实来源网络访问已关闭。";
+        AddLog("来源", Status);
+        return true;
+    }
+    private static async Task RetireClientAsync(IMetadataClient client)
+    { try { await client.DisposeAsync().ConfigureAwait(false); } catch (Exception) { /* Lifecycle failures never expose process diagnostics or revive stale work. */ } }
     public AsyncCommand ScanCommand { get; }
     public AsyncCommand MatchCommand { get; }
     public AsyncCommand MatchCheckedCommand { get; }
@@ -334,7 +390,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         var query = GetQuery(selected);
         var sources = GetSources();
         ClearCandidates(selected);
-        return RunAsync("match", "正在读取离线样例候选…", async (generation, token) =>
+        return RunAsync("match", IsRealSource ? "正在查询真实来源…" : "正在读取离线样例候选…", async (generation, token) =>
         {
             if (!EnsureSnapshot(selected)) return;
             var results = await _scraper.MatchAsync(query, token, sources: sources);
@@ -356,29 +412,46 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         return RunAsync("batch-match", $"正在识别勾选项 · 0 / {jobs.Length}", async (generation, token) =>
         {
             var completed = 0;
+            var matched = 0;
+            var noMatch = 0;
+            var unavailable = 0;
+            var unsupported = 0;
+            var failed = 0;
+            var skipped = 0;
             foreach (var (row, query) in jobs)
             {
                 if (!IsCurrent(generation, token)) return;
-                if (!EnsureSnapshot(row)) continue;
+                if (!EnsureSnapshot(row)) { skipped++; continue; }
                 ClearCandidates(row);
                 try
                 {
                     var results = await _scraper.MatchAsync(query, token, sources: sources);
                     if (!IsCurrent(generation, token)) return;
-                    if (EnsureSnapshot(row)) ApplyCandidates(row, results);
+                    if (EnsureSnapshot(row))
+                    {
+                        ApplyCandidates(row, results);
+                        if (results.Count > 0) matched++; else noMatch++;
+                    }
+                    else skipped++;
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
                     if (!IsCurrent(generation, token)) return;
-                    row.MatchAttempted = true; row.MatchFailure = ex.Message; row.RefreshMetadata();
-                    if (SelectedAsset == row) CandidateStatus = "识别失败。可以重试或手动审核。";
-                    AddLog("警告", $"{row.Filename}：{ex.Message}");
+                    SetMatchFailure(row, ex);
+                    if (row.MatchFailureCode == "live_unavailable") unavailable++;
+                    else if (row.MatchFailureCode == "unsupported_query") unsupported++;
+                    else failed++;
+                    if (SelectedAsset == row) CandidateStatus = CandidateMessage(row);
+                    AddLog("警告", $"{row.Filename}：{row.MatchFailure}");
                 }
                 completed++;
                 Status = $"正在识别勾选项 · {completed} / {jobs.Length}";
             }
-            Status = $"已完成 {completed} 项离线识别 · 尚未自动确认任何资料";
+            Status = $"已处理 {completed} 项 · 找到候选 {matched} 项 · 无候选 {noMatch} 项 · 来源不可用 {unavailable} 项 · 检索类型不支持 {unsupported} 项 · 失败 {failed} 项 · 跳过 {skipped} 项 · 尚未自动确认任何资料";
+            // Put the cause first: the compact status bar may truncate the counts.
+            if (unsupported > 0) Status = $"{(IsRealSource ? "真实来源目前仅支持番号检索，请输入影片番号。" : UnsupportedQueryMessage)} {Status}";
+            if (unavailable > 0) Status = $"{(IsRealSource ? "真实来源未配置或不可用，请检查来源设置。" : LiveUnavailableMessage)} {Status}";
             AddLog("识别", Status); ApplyFilter(); RefreshSummary();
         });
     }
@@ -563,12 +636,17 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            state = "failed"; detail = ex.Message;
+            state = "failed"; detail = kind is "match" or "batch-match" ? FailureMessage(ex) : ex.Message;
             if (generation == _generation)
             {
-                Status = $"操作未完成：{ex.Message}";
+                Status = $"操作未完成：{detail}";
                 if (kind == "match" && SelectedAsset is { } row)
-                { row.MatchAttempted = true; row.MatchFailure = ex.Message; row.RefreshMetadata(); CandidateStatus = "样例识别失败。检查 Python 与 worker 路径；也可手动审核。"; }
+                {
+                    SetMatchFailure(row, ex);
+                    CandidateStatus = row.MatchFailure;
+                    Status = detail = row.MatchFailure;
+                    RefreshSummary();
+                }
                 AddLog("错误", Status);
             }
         }
@@ -713,7 +791,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
     }
     private void ClearCandidates(AssetRow row)
     {
-        row.CachedCandidates = []; row.CachedSelection = null; row.MatchAttempted = false; row.MatchFailure = "";
+        row.CachedCandidates = []; row.CachedSelection = null; row.MatchAttempted = false; row.MatchFailure = ""; row.MatchFailureCode = "";
         // Candidate-derived draft fields cannot be used as evidence after a query/source change.
         if (row.Review is null && !row.HasManualEdits)
         {
@@ -730,16 +808,55 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         row.CachedSelection = row.Review is { } reviewed
             ? row.CachedCandidates.FirstOrDefault(c => c.Candidate.Id == reviewed.Identifier && c.Title == reviewed.Title && c.Candidate.Year == reviewed.Year)
             : results.Count == 1 ? row.CachedCandidates[0] : null;
-        row.MatchAttempted = true; row.MatchFailure = "";
+        row.MatchAttempted = true; row.MatchFailure = ""; row.MatchFailureCode = "";
+        SourceStatus = results.Count == 0 ? "无结果" : $"找到 {results.Count} 个候选";
         if (row.Review is null && row.CachedSelection is { } choice && !row.HasUnsavedEdits) LoadCandidateDraft(row, choice.Candidate);
         row.RefreshMetadata();
         if (SelectedAsset == row) LoadSelection();
         RefreshSummary();
     }
-    private static string CandidateMessage(AssetRow row) => row.SnapshotInvalidated ? "源文件已变化，请重新扫描。" :
-        !string.IsNullOrEmpty(row.MatchFailure) ? "识别失败。可重试或手动审核。" : !row.MatchAttempted ? "离线样例 · 可用番号或标题检索。" :
-        row.CachedCandidates.Count == 0 ? "没有匹配的离线候选。请手动填写并核对。" :
-        row.CachedCandidates.Count > 1 ? $"找到 {row.CachedCandidates.Count} 个候选 · 请明确选择后逐项审核" : "找到 1 个离线候选 · 仍需人工核对";
+    private string CandidateMessage(AssetRow row) => row.SnapshotInvalidated ? "源文件已变化，请重新扫描。" :
+        !string.IsNullOrEmpty(row.MatchFailure) ? row.MatchFailure : !row.MatchAttempted ? SourceDescription :
+        row.CachedCandidates.Count == 0 ? IsRealSource ? "无结果。请检查查询内容，或手动填写并核对。" : "没有匹配的离线候选。请手动填写并核对。" :
+        row.CachedCandidates.Count > 1 ? $"找到 {row.CachedCandidates.Count} 个候选 · 请明确选择后逐项审核" : "找到 1 个候选 · 仍需人工核对";
+    private void SetMatchFailure(AssetRow row, Exception error)
+    {
+        row.MatchAttempted = true;
+        row.MatchFailureCode = error is ScraperException scraper ? scraper.Code : "";
+        row.MatchFailure = FailureMessage(error);
+        SourceStatus = FailureCategory(row.MatchFailureCode);
+        row.RefreshMetadata();
+    }
+    internal static string FailureCategory(string code) => code switch
+    {
+        "live_unavailable" or "invalid_config" or "dependency_unavailable" => "未配置",
+        "network" or "timeout" or "rate_limited" or "http_error" => "网络失败",
+        "auth_required" => "需要授权",
+        "challenge" => "需要人工验证",
+        "parse" or "schema_drift" or "validation" or "identity_mismatch" or "ambiguous_identity" or "response_too_large" or "invalid_candidate" or "invalid_identity" => "解析失败",
+        "unsupported_query" => "检索类型不支持",
+        "policy_blocked" => "访问已阻止",
+        "session_faulted" or "session_full" or "cancel_unacknowledged" or "worker_exit" or "worker_io" or "protocol_invalid" or "protocol_limit" or "protocol_version" => "会话已停止",
+        _ => "查询失败"
+    };
+    private string FailureMessage(Exception error)
+    {
+        var code = error is ScraperException scraper ? scraper.Code : "";
+        if (IsRealSource && (FailureCategory(code) == "会话已停止" || code is "invalid_candidate" or "invalid_identity"))
+            return "来源会话已停止。请打开“配置来源”并重新保存，以建立新会话；也可恢复演示模式。保存不会自动查询。";
+        if (code == "live_unavailable" && !IsRealSource) return LiveUnavailableMessage;
+        if (code == "unsupported_query") return IsRealSource ? "真实来源目前仅支持番号检索，请输入影片番号。" : UnsupportedQueryMessage;
+        return FailureCategory(code) switch
+        {
+            "未配置" => "未配置。请检查来源配置及随应用提供的运行依赖后重试。",
+            "网络失败" => "网络失败。请检查网络或代理后重试；尚不能判断是否存在匹配。",
+            "需要授权" => "需要授权。来源要求登录或授权，当前连接不支持此验证方式，已停止本次请求。可恢复演示模式或手动核对。",
+            "需要人工验证" => "需要人工验证。当前连接不支持完成来源的人机验证，已停止本次请求。可恢复演示模式或手动核对。",
+            "解析失败" => "解析失败。来源页面或身份信息未通过验证，请稍后重试或手动核对。",
+            "访问已阻止" => "访问已阻止。安全校验或来源规则拒绝了请求，请检查来源设置；也可使用演示模式或手动核对。",
+            _ => "查询失败。请检查本地运行环境后重试，或手动填写资料。"
+        };
+    }
     private string GetQuery(AssetRow row)
     {
         if (!string.IsNullOrWhiteSpace(row.QueryOverride)) return row.QueryOverride.Trim();
@@ -748,7 +865,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         if (SelectedSearchMode == "番号") return row.Asset.Identifier ?? row.DraftIdentifier;
         return row.Asset.Identifier ?? row.Asset.Stem;
     }
-    private IReadOnlyList<string>? GetSources() => SelectedMatchSource switch { "xcity" => ["xcity"], "TPDB（影片）" => ["theporndb_movies"], _ => null };
+    private IReadOnlyList<string>? GetSources() => IsRealSource ? ["javbus"] : SelectedMatchSource switch { "xcity" => ["xcity"], "TPDB（影片）" => ["theporndb_movies"], _ => null };
     private bool EditorMatches(MetadataCandidate candidate) => EditorIdentifier.Trim() == candidate.Id && EditorTitle.Trim() == candidate.Title && EditorYear.Trim() == (candidate.Year?.ToString(CultureInfo.InvariantCulture) ?? "");
     private bool TryEditorMetadata(out string identifier, out string title, out int? year, out string error)
     {
@@ -870,17 +987,24 @@ public sealed class WorkbenchViewModel : ObservableObject, IDisposable
         Logs.Insert(0, new(DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture), level, message));
         if (Logs.Count > 250) Logs.RemoveAt(Logs.Count - 1);
     }
+    private Task BeginDisposal()
+    {
+        if (_disposeTask is not null) return _disposeTask;
+        CancelCurrent(false); _disposed = true;
+        _clientShutdowns.Add(RetireClientAsync(_scraper));
+        foreach (var row in _allAssets) row.PropertyChanged -= OnRowChanged;
+        // Track committed-but-unapplied writes together with all worker lifetimes.
+        var flush = Task.WhenAll(_pendingReviewWrites.Values.Select(CleanupReviewWriteAsync).Append(_pendingInvalidations));
+        _disposeTask = CompleteDisposalAsync(Task.WhenAll(_clientShutdowns.Append(flush)));
+        return _disposeTask;
+    }
+    private async Task CompleteDisposalAsync(Task cleanup)
+    { try { await cleanup.ConfigureAwait(false); } finally { _store?.Dispose(); } }
+    public ValueTask DisposeAsync() => new(BeginDisposal());
     public void Dispose()
     {
-        if (_disposed) return;
-        CancelCurrent(false); _disposed = true;
-        foreach (var row in _allAssets) row.PropertyChanged -= OnRowChanged;
-        // Both tasks are context-free. A committed write remains tracked until its UI
-        // continuation accepts it, so closing cannot strand a cancelled review in SQLite.
-        var flush = Task.WhenAll(_pendingReviewWrites.Values.Select(CleanupReviewWriteAsync).Append(_pendingInvalidations));
-        if (flush.Wait(TimeSpan.FromSeconds(5))) _store?.Dispose();
-        else _ = DisposeStoreAfterWritesAsync(flush);
+        // Synchronous diagnostics retain the existing bounded cleanup contract.
+        // The actual window awaits DisposeAsync without blocking its UI thread.
+        BeginDisposal().Wait(TimeSpan.FromSeconds(5));
     }
-    private async Task DisposeStoreAfterWritesAsync(Task flush)
-    { try { await flush.ConfigureAwait(false); } finally { _store?.Dispose(); } }
 }

@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "verifiedUtc": "2026-10-14",
+  "targetPython": "3.13",
+  "developmentPython": ">=3.11",
+  "description": "Pinned pure Python HTTPX runtime. typing_extensions is retained for developer Python 3.11/3.12 compatibility. No optional extras, native wheels, runtime pip, or runtime download.",
+  "packages": [
+    {
+      "name": "anyio",
+      "version": "4.14.2",
+      "filename": "anyio-4.14.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/da/35/f2287558c17e29fafc8ef3daf819bb9834061cfa43bff8014f7df7f63bdc/anyio-4.14.2-py3-none-any.whl",
+      "sha256": "9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494",
+      "size": 125813,
+      "releasePage": "https://pypi.org/project/anyio/4.14.2/",
+      "metadataApi": "https://pypi.org/pypi/anyio/4.14.2/json",
+      "requiresPython": ">=3.10",
+      "requiresDist": [
+        "exceptiongroup>=1.0.2; python_version < \"3.11\"",
+        "idna>=2.8",
+        "typing_extensions>=4.5; python_version < \"3.13\"",
+        "trio>=0.32.0; extra == \"trio\""
+      ],
+      "license": "MIT",
+      "licenseFiles": [
+        "anyio-4.14.2.dist-info/licenses/LICENSE"
+      ],
+      "metadataFile": "anyio-4.14.2.dist-info/METADATA"
+    },
+    {
+      "name": "certifi",
+      "version": "2026.7.22",
+      "filename": "certifi-2026.7.22-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl",
+      "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+      "size": 136983,
+      "releasePage": "https://pypi.org/project/certifi/2026.7.22/",
+      "metadataApi": "https://pypi.org/pypi/certifi/2026.7.22/json",
+      "requiresPython": ">=3.7",
+      "requiresDist": [],
+      "license": "MPL-2.0",
+      "licenseFiles": [
+        "certifi-2026.7.22.dist-info/licenses/LICENSE"
+      ],
+      "metadataFile": "certifi-2026.7.22.dist-info/METADATA"
+    },
+    {
+      "name": "h11",
+      "version": "0.16.0",
+      "filename": "h11-0.16.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl",
+      "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+      "size": 37515,
+      "releasePage": "https://pypi.org/project/h11/0.16.0/",
+      "metadataApi": "https://pypi.org/pypi/h11/0.16.0/json",
+      "requiresPython": ">=3.8",
+      "requiresDist": [],
+      "license": "MIT",
+      "licenseFiles": [
+        "h11-0.16.0.dist-info/licenses/LICENSE.txt"
+      ],
+      "metadataFile": "h11-0.16.0.dist-info/METADATA"
+    },
+    {
+      "name": "httpcore",
+      "version": "1.0.9",
+      "filename": "httpcore-1.0.9-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl",
+      "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
+      "size": 78784,
+      "releasePage": "https://pypi.org/project/httpcore/1.0.9/",
+      "metadataApi": "https://pypi.org/pypi/httpcore/1.0.9/json",
+      "requiresPython": ">=3.8",
+      "requiresDist": [
+        "certifi",
+        "h11>=0.16",
+        "anyio<5.0,>=4.0; extra == 'asyncio'",
+        "h2<5,>=3; extra == 'http2'",
+        "socksio==1.*; extra == 'socks'",
+        "trio<1.0,>=0.22.0; extra == 'trio'"
+      ],
+      "license": "BSD-3-Clause",
+      "licenseFiles": [
+        "httpcore-1.0.9.dist-info/licenses/LICENSE.md"
+      ],
+      "metadataFile": "httpcore-1.0.9.dist-info/METADATA"
+    },
+    {
+      "name": "httpx",
+      "version": "0.28.1",
+      "filename": "httpx-0.28.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl",
+      "sha256": "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+      "size": 73517,
+      "releasePage": "https://pypi.org/project/httpx/0.28.1/",
+      "metadataApi": "https://pypi.org/pypi/httpx/0.28.1/json",
+      "requiresPython": ">=3.8",
+      "requiresDist": [
+        "anyio",
+        "certifi",
+        "httpcore==1.*",
+        "idna",
+        "brotli; (platform_python_implementation == 'CPython') and extra == 'brotli'",
+        "brotlicffi; (platform_python_implementation != 'CPython') and extra == 'brotli'",
+        "click==8.*; extra == 'cli'",
+        "pygments==2.*; extra == 'cli'",
+        "rich<14,>=10; extra == 'cli'",
+        "h2<5,>=3; extra == 'http2'",
+        "socksio==1.*; extra == 'socks'",
+        "zstandard>=0.18.0; extra == 'zstd'"
+      ],
+      "license": "BSD-3-Clause",
+      "licenseFiles": [
+        "httpx-0.28.1.dist-info/licenses/LICENSE.md"
+      ],
+      "metadataFile": "httpx-0.28.1.dist-info/METADATA"
+    },
+    {
+      "name": "idna",
+      "version": "3.18",
+      "filename": "idna-3.18-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/1e/5e/d4e9f1a599fb8e573b7b87160658329fbf28d19eac2718f51fc3def3aa5a/idna-3.18-py3-none-any.whl",
+      "sha256": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",
+      "size": 65455,
+      "releasePage": "https://pypi.org/project/idna/3.18/",
+      "metadataApi": "https://pypi.org/pypi/idna/3.18/json",
+      "requiresPython": ">=3.9",
+      "requiresDist": [
+        "ruff >= 0.6.2 ; extra == \"all\"",
+        "mypy >= 1.11.2 ; extra == \"all\"",
+        "pytest >= 8.3.2 ; extra == \"all\""
+      ],
+      "license": "BSD-3-Clause",
+      "licenseFiles": [
+        "idna-3.18.dist-info/licenses/LICENSE.md"
+      ],
+      "metadataFile": "idna-3.18.dist-info/METADATA"
+    },
+    {
+      "name": "typing_extensions",
+      "version": "4.16.0",
+      "filename": "typing_extensions-4.16.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl",
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+      "size": 45571,
+      "releasePage": "https://pypi.org/project/typing-extensions/4.16.0/",
+      "metadataApi": "https://pypi.org/pypi/typing_extensions/4.16.0/json",
+      "requiresPython": ">=3.9",
+      "requiresDist": [],
+      "license": "PSF-2.0",
+      "licenseFiles": [
+        "typing_extensions-4.16.0.dist-info/licenses/LICENSE"
+      ],
+      "metadataFile": "typing_extensions-4.16.0.dist-info/METADATA"
+    }
+  ]
+}

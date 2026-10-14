@@ -26,6 +26,7 @@ Test("identifier case, Unicode compatibility and ambiguity", () =>
     Assert(MediaScanner.ExtractIdentifier("demo_001.2160p") == "DEMO-001");
     Assert(MediaScanner.ExtractIdentifier("DEMO-001 SAMPLE-002") is null);
     Assert(MediaScanner.ExtractIdentifier("旅行日记") is null);
+    Assert(MediaScanner.ExtractIdentifier("BF-658") == "BF-658");
 });
 AsyncTest("recursive read-only scan + language sidecars", async () =>
 {
@@ -253,6 +254,15 @@ AsyncTest("bridge caller cancellation preserved", async () =>
 });
 if (args.Length > 0)
 {
+    AsyncTest("real-shaped filename is recognized but disconnected sources are not no-match", async () =>
+    {
+        var scan = await Scan("unavailable-source", "BF-658.mkv");
+        var asset = scan.Assets.Single();
+        Assert(asset.Identifier == "BF-658" && asset.Warnings.Count == 0);
+        try { await new PythonScraperClient(python, args[0]).MatchAsync(asset.Identifier!); throw new Exception("Expected unavailable source"); }
+        catch (ScraperException ex) { Assert(ex.Code == "live_unavailable", ex.Code); }
+        Assert(File.ReadAllText(asset.SourcePath) == "fixture");
+    });
     AsyncTest("offline provider-contract worker end-to-end", async () =>
     {
         var result = await new PythonScraperClient(python, args[0]).MatchAsync("DEMO-001");
@@ -300,6 +310,23 @@ AsyncTest("bridge source error allows valid fallback", async () =>
     var terminal = Worker("terminal", "print(json.dumps({'version':1,'requestId':r['requestId'],'type':'error','terminal':True,'error':{'code':'invalid_request','message':'Bad request'}}),flush=True)\n");
     try { await new PythonScraperClient(python, terminal).MatchAsync("DEMO-001"); throw new Exception("Expected failure"); }
     catch (ScraperException e) { Assert(e.Code == "invalid_request"); }
+});
+AsyncTest("bridge preserves unavailable and unsupported source reasons without hiding mixed failures", async () =>
+{
+    foreach (var (codes, expected) in new[]
+    {
+        (new[] { "live_unavailable" }, "live_unavailable"),
+        (new[] { "live_unavailable", "unsupported_query" }, "live_unavailable"),
+        (new[] { "unsupported_query" }, "unsupported_query"),
+        (new[] { "live_unavailable", "schema_drift" }, "sources_failed"),
+        (Array.Empty<string>(), "sources_failed")
+    })
+    {
+        var errors = string.Join("\n", codes.Select(code => $"print(json.dumps({{'version':1,'requestId':r['requestId'],'type':'error','terminal':False,'error':{{'code':'{code}','message':'not retained'}}}}),flush=True)"));
+        var script = Worker("source-reasons", errors + "\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'completed','status':'sources_failed','count':0}),flush=True)\n");
+        try { await new PythonScraperClient(python, script).MatchAsync("BF-658"); throw new Exception("Expected source failure"); }
+        catch (ScraperException ex) { Assert(ex.Code == expected, ex.Code); }
+    }
 });
 AsyncTest("bridge teardown bounded if an exited worker child holds pipes", async () =>
 {
@@ -361,6 +388,7 @@ AsyncTest("bridge keeps provider IDs separate from catalog identity", async () =
     var script = Worker("long-valid-identity", "c=json.loads(" + System.Text.Json.JsonSerializer.Serialize(body) + ")\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'candidate','candidate':c}),flush=True)\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'completed'}),flush=True)\n");
     Assert((await new PythonScraperClient(python, script).MatchAsync("A title")).Single().SourceId == longSlug);
 });
+MetadataSessionChecks.Register(checks, sandbox, python, args.Length > 0 ? args[0] : null);
 var failures = 0;
 try
 {

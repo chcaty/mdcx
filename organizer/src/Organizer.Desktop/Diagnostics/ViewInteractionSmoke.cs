@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.VisualTree;
+using Avalonia.Media.Imaging;
 using Organizer.Desktop.ViewModels;
 
 namespace Organizer.Desktop.Diagnostics;
@@ -41,6 +42,62 @@ internal static class ViewInteractionSmoke
         try
         {
             await Pump();
+            await StartupErrorViewSmoke.RunAsync(window, Check);
+            var settingsButton = window.FindControl<Button>("SourceSettingsButton")!;
+            await Click(settingsButton);
+            var settingsWindow = window.ActiveSourceSettings ?? throw new InvalidOperationException("Source settings did not open.");
+            await Pump(); settingsWindow.UpdateLayout();
+            var settingsDraft = (SourceSettingsViewModel)settingsWindow.DataContext!;
+            Check(settingsWindow.IsVisible && !vm.IsRealSource && settingsDraft.Mode == SourceSettingsViewModel.DemoMode,
+                "Pointer opens a detached source configuration dialog in demo mode");
+            settingsDraft.Mode = SourceSettingsViewModel.RealMode;
+            settingsDraft.Proxy = "http://user:secret@localhost:7890";
+            await Pump();
+            var verificationNote = settingsWindow.FindControl<TextBlock>("LiveVerificationNote")!;
+            var notePosition = verificationNote.TranslatePoint(new Point(0, 0), settingsWindow)!.Value;
+            Check(verificationNote.Text == "尚未在线验收；可用性取决于来源响应。" && verificationNote.IsVisible && verificationNote.Bounds.Height > 0 &&
+                notePosition.Y > 0 && notePosition.Y + verificationNote.Bounds.Height < settingsWindow.Bounds.Height,
+                "Real-source settings visibly disclose that online acceptance remains unverified");
+            async Task ClickSettings(string name)
+            {
+                var control = settingsWindow.FindControl<Button>(name)!;
+                var point = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), settingsWindow)!.Value;
+                settingsWindow.MouseMove(point); settingsWindow.MouseDown(point, MouseButton.Left); settingsWindow.MouseUp(point, MouseButton.Left);
+                await Pump();
+            }
+            await ClickSettings("SaveSourceSettingsButton");
+            Check(settingsWindow.IsVisible && settingsDraft.HasError && !vm.IsRealSource && vm.Assets.All(asset => !asset.MatchAttempted),
+                "Actual save button rejects credential proxies without enabling or starting a match");
+            settingsDraft.Proxy = "";
+            settingsDraft.Error = "";
+            settingsWindow.UpdateLayout();
+            var sourceScreenshot = Path.Combine(Path.GetTempPath(), $"mdcx-source-settings-{Guid.NewGuid():N}.png");
+            using (var bitmap = new RenderTargetBitmap(new PixelSize((int)settingsWindow.Bounds.Width, (int)settingsWindow.Bounds.Height), new Vector(96, 96)))
+            { bitmap.Render(settingsWindow); bitmap.Save(sourceScreenshot); }
+            Console.WriteLine($"SOURCE SETTINGS RENDER: {sourceScreenshot}");
+            await ClickSettings("CancelSourceSettingsButton");
+            Check(window.ActiveSourceSettings is null && !vm.IsRealSource, "Cancel discards real-source edits and returns to the unchanged workbench");
+            await Click(settingsButton);
+            settingsWindow = window.ActiveSourceSettings!;
+            settingsDraft = (SourceSettingsViewModel)settingsWindow.DataContext!;
+            settingsDraft.Mode = SourceSettingsViewModel.RealMode;
+            await Pump();
+            await ClickSettings("SaveSourceSettingsButton");
+            Check(window.ActiveSourceSettings is null && vm.IsRealSource && vm.Assets.All(asset => !asset.MatchAttempted) && vm.SourceStatus == "已配置 · 尚未查询",
+                "Explicit real-source save updates the workbench without querying or accepting media");
+            Check(window.FindControl<TextBlock>("SourceModeTitle")!.Text == "本地工作空间 · 真实来源 · JavBus",
+                "Rendered titlebar reflects enabled real mode without claiming offline-only operation");
+            await Click(settingsButton);
+            settingsWindow = window.ActiveSourceSettings!;
+            await ClickSettings("ResetSourceSettingsButton");
+            Check(window.ActiveSourceSettings is null && !vm.IsRealSource && vm.Assets.All(asset => !asset.MatchAttempted),
+                "Explicit clear button restores demo without a query");
+            await Click(settingsButton);
+            settingsWindow = window.ActiveSourceSettings!;
+            settingsWindow.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.None, "");
+            window.KeyRelease(Key.Escape, RawInputModifiers.None, PhysicalKey.None, "");
+            await Pump();
+            Check(window.ActiveSourceSettings is null && !vm.IsRealSource, "Escape closes settings without changing source mode");
             var list = window.FindControl<ListBox>("MediaGrid")!;
             var search = window.FindControl<TextBox>("SearchBox")!;
             Check(vm.Assets.Count >= 2 && list.Bounds.Height > 100, "Media list is realized with a bounded scroll viewport");

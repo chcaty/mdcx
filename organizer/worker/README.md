@@ -1,15 +1,26 @@
-# Metadata worker: offline historical-contract slice
+# Metadata worker: explicit fixture or configured metadata source
 
-Python **3.12+**, standard library only. Run independently of the legacy root package (Python 3.13.4 and third-party dependencies):
+Python **3.12+**. The default fixture path is standard-library-only; the configured HTTP path and full test suite require the locked HTTPX dependency set. Run independently of the legacy root package (Python 3.13.4 and third-party dependencies):
 
 ```sh
+python3 -m pip --isolated install --require-hashes --only-binary=:all: --no-deps -r organizer/worker/requirements-live.txt
 python3 organizer/worker/main.py
 python3 -m unittest discover -s organizer/worker/tests -v
 ```
 
-The entrypoint works from any current directory. It reads UTF-8 JSON Lines, emits **only JSONL on stdout**, and writes startup diagnostics to stderr. EOF drains outstanding work and exits. The host must drain both pipes asynchronously. No package install, GUI import, browser, personal media, credentials or live network is needed.
+The entrypoint works from any current directory. It reads UTF-8 JSON Lines, emits **only JSONL on stdout**, and writes startup diagnostics to stderr. EOF drains outstanding work and exits. The host must drain both pipes asynchronously. The default fixture path needs no GUI import, browser, personal media, credentials or live network. Full tests use injected HTTP responses with socket/DNS guards, never source-site requests.
 
-## Deliberate migration boundary
+## Configured source path (local implementation, online availability unverified)
+
+`python3 organizer/worker/main.py --metadata-config /absolute/path/source.json` selects the independent `javbus` catalog-metadata provider. Omit this argument to keep the original fictional demo mode. An explicit minimal configuration is `{"source":"javbus","network_enabled":false}`: loading it cannot open a connection. Only an explicit `network_enabled:true` setting permits the configured transport to execute requests; no environment variable can enable it. The desktop configuration workflow requires an explicit save/enable action and never queries on startup, folder scan or settings changes.
+
+This provider is independently adapted from the repository's JavBus direct-detail/search parsing behavior without importing its global manager, Qt, browser, file executor or ambient configuration. It requires a page-extracted catalog number, keeps the route identity separate, and rejects missing/mismatched/ambiguous identity. A request value is never substituted for a missing response number. It currently returns only identifier, title, optional year and evidence. No artwork, media, NFO or files are downloaded/written by the worker.
+
+HTTPX 0.28.1 is pinned with all transitive wheels/hashes. The transport verifies TLS, disables ambient proxies/auth/cookies and redirects, allows only the fixed reviewed source origin and catalog routes, and bounds raw streamed bodies. Optional explicit HTTP/HTTPS proxy configuration must contain no credentials. Cookies, bearer tokens, custom origins, browser automation and security bypasses are unsupported. Authentication/age/challenge gates remain errors requiring separate legitimate access work; the implementation never auto-accepts them. Rate limits, Retry-After, deadlines and cancellation are enforced by the session scheduler. A hostname allowlist is not a generic DNS-rebinding firewall or proof that a provider permits access.
+
+`source_settings.py` defines the strict, bounded configuration schema. Unknown keys, credentials, duplicate JSON keys, nonfinite numbers and unsupported values fail closed. Configuration failures emit one safe `startup_error` event and exit 2. Configured mode accepts only `sources:["javbus"]` (or omission); it cannot silently select demo adapters. No actual online availability or catalog coverage is claimed. `BF-658` proves filename/query/request transmission only, with a synthetic error response; it has not been looked up online. Full candidate tests use clearly fictional `DEMO-001` HTML through HTTPX MockTransport.
+
+## Historical demo adapters
 
 This is an independently implemented scheduling/validation boundary with narrow parser and historical HTTP-request contracts from the repository. It neither wraps the old CLI nor imports its global manager.
 
@@ -17,9 +28,11 @@ This is an independently implemented scheduling/validation boundary with narrow 
 - TPDB movies: `/movies?q=...&per_page=100` search **data array**, then `/movies/{slug}` detail **data object**. Search hints never directly become metadata. The filename/date/actor ranking algorithm and hash branch are not ported.
 - Requests are exact offline objects: source, GET method, URL, headers and credential reference. The TPDB JSON/bearer header shape uses one fixed inert test marker. Its explicit offline User-Agent intentionally replaces the legacy browser string. No actual credentials are read or transmitted.
 - Source priority is ordered and lazy. Only requested sources run. A complete accepted candidate stops lower-source work; a source's detail targets run sequentially with a ten-unique-target budget. Independent match requests remain bounded and concurrent.
-- The slice does not port all providers, legacy configuration, full per-field/language/type reduction, actors, artwork, translations, hash lookup, or real HTTP. User-reviewed metadata persistence belongs to the .NET application.
+- The historical demo adapters do not port all providers, legacy configuration, full per-field/language/type reduction, actors, artwork, translations or hash lookup; they remain fixture-only even though the separate configured source path now has an HTTP implementation. User-reviewed metadata persistence belongs to the .NET application.
 
 Fixtures are **authored fictional, synthetic and uncaptured**, not archives of provider responses. Historical route strings use provider origins solely to test shape; they are never followed. Every fixture candidate records `fixture="true"` and `responseOrigin="synthetic_uncaptured"`. See [the corpus](fixtures/README.md) and [audit](../docs/scraper-audit.md). Existing LICENSE/README notices remain unchanged; the GPLv3/additional README restriction ambiguity is unresolved, and nothing grants distribution or commercial-use rights.
+
+An unlisted search or detail request fails with nonretryable `live_unavailable`: no live metadata source is connected. Missing fixture coverage is never converted to a successful empty result or 404. Only explicitly declared authored negative search examples return empty results. For example, the real-world query `BF-658` with default sources produces an xcity `live_unavailable` error, a TPDB `unsupported_query` error, and terminal `sources_failed` with zero candidates. This says nothing about whether providers have metadata for that query.
 
 ## JSONL v1 framing with candidate identity schema 2
 
@@ -33,9 +46,9 @@ One JSON object per line. A session accepts at most 8192 unique match IDs and 32
 {"version":1,"requestId":"match-1","command":"cancel"}
 ```
 
-`query` contains 1–256 printable characters. `sources` is a nonempty, unique ordered subset of `xcity` and `theporndb_movies`; that order is the default. Unknown fields (including credentials, headers, URLs and fixture paths), commands/sources, duplicate JSON keys, nonfinite numbers and versions other than integer 1 are rejected. A frame is limited to 16 KiB including newline. Oversized frames are drained without buffering the remainder before the next line is processed.
+`query` contains 1–256 printable characters. `sources` in demo mode is a nonempty, unique ordered subset of `xcity` and `theporndb_movies`; that order is the default. Configured mode has the separate one-source `javbus` registry. Unknown fields (including credentials, headers, URLs and fixture paths), commands/sources, duplicate JSON keys, nonfinite numbers and versions other than integer 1 are rejected. A frame is limited to 16 KiB including newline. Oversized frames are drained without buffering the remainder before the next line is processed.
 
-Events carry `version`, `requestId`, `type`:
+Events carry `version`, `requestId`, `type`. Before request processing, an invalid startup configuration emits `startup_error` with empty requestId, a safe error payload and terminal=true; the process exits instead of falling back to demo mode. Request events:
 
 - `candidate`: existing `id`, `title`, optional integer `year`, `source`, `sourceUrl`, `confidence`, boolean `requiresReview`, array `reviewReasons` and string-valued `provenance`. Additive `sourceId` is the opaque provider identifier; `catalogIdentifier` is `{namespace,value}` or explicit null.
 - `health`: process-cumulative counters keyed by source; a snapshot may include concurrent work.
@@ -57,7 +70,7 @@ Illustrative candidates, with provenance abbreviated:
 `id` remains a backward-compatible **display/review key**, never an inter-provider join key. Internal `ProviderIdentity(source,value)` and `CatalogIdentifier(namespace,value)` are different types. An xcity numeric route ID is distinct from its `hinban` catalog value. TPDB slug is exact, opaque and source-scoped; it is never converted to a catalog number, even if it looks like `DEMO-001`.
 
 - Only declared catalog identifiers receive Unicode NFKC and narrow case/separator equivalence. Leading zeroes and edition suffixes stay significant. Provider IDs/slugs are never canonicalized, and detail slugs must exactly equal the selected search slug.
-- Catalog-number queries never degrade into title hits. TPDB has no verified catalog namespace or crosswalk in the inspected record schema, so catalog-shaped queries skip that adapter without making requests. Use a title to exercise TPDB.
+- Catalog-number queries never degrade into title hits. TPDB has no verified catalog namespace or crosswalk in the inspected record schema, so catalog-shaped queries skip that adapter without making requests. When no candidate is selected, this emits nonretryable `unsupported_query`, rather than counting a no-match. An unsupported enrichment fallback after an accepted candidate only records `rejectedFallback`. Use a title to exercise TPDB's authored examples.
 - xcity catalog mismatch is an explicit rejected detail, but later search targets are still inspected within the budget. A numeric xcity source ID is **response-route-bound**: the historical detail fields do not independently prove it. Optional canonical-link consistency is additional hardening, not a required historical selector or captured evidence. Wrong canonical identities are rejected when present.
 - Required detail spans must occur exactly once; repeated required IDs cannot concatenate into an invented identity. Missing/duplicate fields are `schema_drift`; invalid syntax is `parse`; valid empty search is no-match.
 - Duplicate same-provider search targets are fetched once, retaining duplicate count and review reason. Distinct same-title identities remain separate. Search hints never override detail fields.
@@ -78,7 +91,10 @@ Replay examples:
 | `DEMO-006` | xcity title preserved; missing year remains missing |
 | `Harbor of Stars`, sources TPDB only | source-qualified slug display; catalog null; review |
 | `The Last Beacon` | two TPDB slugs with same title, both reviewable |
-| `No Such Fictional Film` | completed no_match |
+| `No Such Fictional Film` | declared authored negative for both sources; completed no_match |
+| `ABSENT-999`, sources xcity only | declared authored negative; completed no_match |
+| `BF-658`, default sources | live_unavailable + unsupported_query; completed sources_failed |
+| Unlisted title, default sources | live_unavailable from each source; completed sources_failed |
 
 ## Scheduling, retries, and source health
 
@@ -86,23 +102,23 @@ The shared scheduler defaults to four in-flight transport calls globally, two pe
 
 Read-only GET-shaped requests get at most three attempts, a 10-second per-attempt timeout, and exponential backoff with small jitter when no valid server delay is provided. Only timeout/connection errors, selected transient OS errors, and HTTP 408/429/500/502/503/504 are retried. Generic OS, parsing, validation, schema, access, challenge, 404, and ordinary 4xx errors are not retried.
 
-`Retry-After` supports delta seconds and HTTP-date, case-insensitive headers, and a shared host cooldown. A delay exceeding 60 seconds is surfaced rather than shortened; subsequent work still respects the original cooldown, subject to its own overall deadline. Cancellation can interrupt all async waits. The scheduler bounds bodies to 1 MiB, the JSON adapter bounds search records to 100, and the matcher caps detail requests at ten unique targets per source. A future real transport must enforce the body bound during streaming, before buffering.
+`Retry-After` supports delta seconds and HTTP-date, case-insensitive headers, and a shared host cooldown. A delay exceeding 60 seconds is surfaced rather than shortened; subsequent work still respects the original cooldown, subject to its own overall deadline. Cancellation can interrupt all async waits. The scheduler bounds bodies to 1 MiB, the JSON adapter bounds search records to 100, and the matcher caps detail requests at ten unique targets per source. The configured HTTP transport enforces that bound during streaming, before buffering; its conservative defaults are one request per host and a one-second minimum interval.
 
-Health separates transport attempts (`requests`, `successes`, `failures`, `retries`, `rateLimited`, `inFlight`, `peakInFlight`, `latencyMs`, `lastError`) from parsed matches/no-matches/validation errors (`matches`, `noMatches`, `parserFailures`) and cancellations. HTTP 404 is a transport failure and a no-match, not a broken parser. `successes` means successful HTTP-shaped responses, not accepted metadata; `retries` counts scheduled retries, including a retry later cancelled during backoff.
+Health separates transport attempts (`requests`, `successes`, `failures`, `retries`, `rateLimited`, `inFlight`, `peakInFlight`, `latencyMs`, `lastError`) from parsed matches/no-matches/validation errors (`matches`, `noMatches`, `parserFailures`) and cancellations. HTTP 404 is a transport failure and a no-match, not a broken parser; fixture coverage gaps never fabricate a 404. `live_unavailable` counts as one failed transport attempt without retry or no-match. `unsupported_query` makes zero transport attempts and records no no-match. `successes` means successful HTTP-shaped responses, not accepted metadata; `retries` counts scheduled retries, including a retry later cancelled during backoff.
 
 ## Error taxonomy
 
 - Input/lifecycle: `invalid_request`, `unsupported_version`, `invalid_sources`, `request_too_large`, `duplicate_request`, `not_active`, `busy`, `session_full`
-- Transport/access: `network`, `timeout`, `http_error`, `rate_limited`, `not_found`, `auth_required`, `challenge`, `policy_blocked`, `response_too_large`
-- Metadata/replay: `parse`, `schema_drift`, `validation`, `identity_mismatch`, `search_truncated`, `replay_mismatch`
+- Transport/access/configuration: `live_unavailable`, `dependency_unavailable`, `invalid_config`, `network`, `timeout`, `http_error`, `rate_limited`, `not_found`, `auth_required`, `challenge`, `policy_blocked`, `response_too_large`
+- Metadata/replay: `unsupported_query`, `parse`, `schema_drift`, `validation`, `identity_mismatch`, `search_truncated`, `replay_mismatch`
 - Worker: `deadline`, `internal`
 
 Error messages are deliberately safe constants or status codes. Raw response bodies, URLs with query strings, credentials, and exception text never become protocol error messages.
 
 ## Transport safety and remaining work
 
-The shipped executable has **no live-network switch or socket implementation**. `FixtureTransport` validates exact reviewed routes/method/headers and maps fixed files, never user-controlled paths. `ReplayTransport` additionally enforces ordered exact expected requests and can assert that every expectation was consumed. `AccessControlledTransport` is an injectable, fail-closed seam requiring an explicit HTTPS allowlist and a per-request authorization function. Its tests use fake transports; it does not claim to implement robots fetching, TLS, DNS-rebinding defense, or authenticated live access.
+The originally delivered e8c540e executable was fixture-only. The updated source adds an explicitly enabled HTTP path described above; demo mode continues to use `FixtureTransport`. `FixtureTransport` validates exact reviewed routes/method/headers and maps fixed files, never user-controlled paths. It returns empty search responses only for explicitly declared negative examples and reports `live_unavailable` for all unlisted requests. `ReplayTransport` additionally enforces ordered exact expected requests and can assert that every expectation was consumed. `AccessControlledTransport` is an injectable, fail-closed seam requiring an explicit HTTPS allowlist and a per-request authorization function. Its tests use fake transports; it does not claim to implement robots fetching, TLS, DNS-rebinding defense, or authenticated live access.
 
-Before any real transport is added, review source permission/robots/terms, allowed destinations including resolved IPs, streaming body bounds, TLS verification, redirect policy, authentication boundaries, cancellation, and log redaction. No ambient cookies, browser impersonation, login automation, CAPTCHA bypass, proxy workaround, or anti-bot evasion is included. 401/403, redirects, and recognizable challenge pages are surfaced rather than bypassed.
+Before claiming online acceptance, verify the source access policy/terms and current response schema through legitimate access. Streaming body bounds, TLS verification, redirect denial, cancellation and log redaction are covered by injected transport tests, not online evidence. Resolved-IP policy and authenticated access are not implemented. No ambient cookies, browser impersonation, login automation, CAPTCHA bypass, proxy workaround, or anti-bot evasion is included. 401/403, redirects, and recognizable challenge pages are surfaced rather than bypassed.
 
 Tests cover pure parser replay, identity negatives, field fallback, provenance, source priority, explicit ambiguity, safe errors, no sockets, concurrency high-water marks, per-attempt admission, retry policies/cooldowns, cancellation, malformed/oversized JSONL, process streaming, and process EOF. They do not establish live-source accuracy, production performance, all-provider parity, or the full legacy application's compatibility.

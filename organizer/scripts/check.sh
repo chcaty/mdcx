@@ -5,6 +5,8 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1 AVALONIA_TELEMETRY_OPTOUT=1 DOTNET_GENERATE
 DOTNET="${DOTNET:-dotnet}"
 PYTHON="${PYTHON:-python3}"
 export ORGANIZER_PYTHON="$PYTHON"
+"$PYTHON" packaging/windows/bundle_python_dependencies.py --check-only --check-installed --requirements worker/requirements-live.txt
+"$PYTHON" -m unittest discover -s packaging/windows -p 'test_*.py' -v
 "$DOTNET" restore MediaOrganizer.sln --locked-mode --disable-parallel --disable-build-servers -m:1
 "$DOTNET" build MediaOrganizer.sln -c Release --no-restore --disable-build-servers -m:1
 "$DOTNET" run --project tests/Organizer.Checks -c Release --no-build -- "$PWD/worker/main.py"

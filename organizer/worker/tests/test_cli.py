@@ -15,6 +15,39 @@ if str(WORKER_ROOT) not in sys.path:
 from mdcx_worker.protocol import MAX_LINE_BYTES  # noqa: E402 - direct test discovery adds worker root above
 
 MAIN = WORKER_ROOT / "main.py"
+# Execute the unchanged __main__ entrypoint, installing guards only after the
+# event loop creates its internal wakeup socket (also portable to Proactor).
+NETWORK_GUARDED_ENTRYPOINT = """
+import asyncio
+import runpy
+import socket
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
+original_run = asyncio.run
+
+async def guarded(coro):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Unexpected external socket or network request")
+    with (patch.object(socket.socket, "__new__", side_effect=forbidden) as sockets,
+          patch("socket.create_connection", side_effect=forbidden) as connections,
+          patch("socket.getaddrinfo", side_effect=forbidden) as dns,
+          patch("urllib.request.urlopen", side_effect=forbidden) as http):
+        await coro
+        for guard in (sockets, connections, dns, http):
+            guard.assert_not_called()
+    print("offline network guard: zero external socket, connection, DNS or HTTP calls", file=sys.stderr)
+
+def guarded_run(coro, **kwargs):
+    return original_run(guarded(coro), **kwargs)
+
+asyncio.run = guarded_run
+entrypoint = sys.argv[1]
+sys.path.insert(0, str(Path(entrypoint).parent))
+sys.argv = [entrypoint, *sys.argv[2:]]
+runpy.run_path(entrypoint, run_name="__main__")
+"""
 
 
 def match_frame(request_id="known", query="DEMO-001", **options):
@@ -33,9 +66,10 @@ class CliTests(unittest.IsolatedAsyncioTestCase):
                 await process.wait()
         self.unrelated_cwd.cleanup()
 
-    async def start_worker(self):
+    async def start_worker(self, *, deny_network=False):
+        arguments = ["-c", NETWORK_GUARDED_ENTRYPOINT, str(MAIN)] if deny_network else [str(MAIN)]
         process = await asyncio.create_subprocess_exec(
-            sys.executable, str(MAIN), cwd=self.unrelated_cwd.name,
+            sys.executable, *arguments, cwd=self.unrelated_cwd.name,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -56,14 +90,16 @@ class CliTests(unittest.IsolatedAsyncioTestCase):
             events.append(event)
         return events
 
-    async def run_worker(self, data):
-        process = await self.start_worker()
+    async def run_worker(self, data, *, deny_network=False):
+        process = await self.start_worker(deny_network=deny_network)
         stdout, stderr = await asyncio.wait_for(process.communicate(data), 5)
         self.assertEqual(process.returncode, 0, stderr.decode("utf-8", errors="replace"))
         self.assertIn(b"fixture transport", stderr)
         self.assertIn(b"live network disabled", stderr)
         self.assertNotIn(b"Traceback", stderr)
         self.assertNotIn(b"metadata worker", stdout)
+        if deny_network:
+            self.assertIn(b"offline network guard: zero external socket, connection, DNS or HTTP calls", stderr)
         return self.decode_events(stdout), stderr
 
     def assert_terminal(self, events, request_id, event_type="completed"):
@@ -109,17 +145,51 @@ class CliTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(health["sources"]), {"theporndb_movies"})
         self.assert_terminal(events, "known")
 
-    async def test_unknown_fixture_completes_no_match_without_candidate(self):
-        events, _ = await self.run_worker(match_frame("unknown", "ABSENT-999"))
-        self.assertFalse(any(event["type"] == "candidate" for event in events))
-        self.assertFalse(any(event["type"] == "error" for event in events))
-        terminal = self.assert_terminal(events, "unknown")
-        self.assertEqual(terminal["status"], "no_match")
-        self.assertEqual(terminal["count"], 0)
-        self.assertEqual(terminal["sourceFailures"], 0)
+    async def test_declared_negative_examples_complete_no_match_without_candidate(self):
+        # These two queries are explicitly authored negative fixtures, not
+        # evidence about any real provider. TPDB cannot search catalog IDs.
+        for query, options in (("ABSENT-999", {"sources": ["xcity"]}), ("No Such Fictional Film", {})):
+            with self.subTest(query=query):
+                events, _ = await self.run_worker(match_frame("negative", query, **options), deny_network=True)
+                self.assertFalse(any(event["type"] in {"candidate", "error"} for event in events))
+                terminal = self.assert_terminal(events, "negative")
+                self.assertEqual(terminal["status"], "no_match")
+                self.assertEqual(terminal["count"], 0)
+                self.assertEqual(terminal["sourceFailures"], 0)
+
+    async def test_unlisted_queries_fail_honestly_without_external_sockets(self):
+        for query, options, expected in (
+            ("BF-658", {}, [("xcity", "live_unavailable"), ("theporndb_movies", "unsupported_query")]),
+            ("Unlisted Real Movie Title", {}, [("xcity", "live_unavailable"), ("theporndb_movies", "live_unavailable")]),
+            ("BF-658", {"sources": ["xcity"]}, [("xcity", "live_unavailable")]),
+            ("Unlisted Real Movie Title", {"sources": ["theporndb_movies"]}, [("theporndb_movies", "live_unavailable")]),
+            ("BF-658", {"sources": ["theporndb_movies"]}, [("theporndb_movies", "unsupported_query")]),
+        ):
+            with self.subTest(query=query, options=options):
+                events, _ = await self.run_worker(match_frame("unlisted", query, **options), deny_network=True)
+                self.assertFalse(any(event["type"] == "candidate" for event in events))
+                errors = [event for event in events if event["type"] == "error"]
+                self.assertEqual([(event["source"], event["error"]["code"]) for event in errors], expected)
+                for event in errors:
+                    self.assertIs(event["terminal"], False)
+                    self.assertIs(event["error"]["retryable"], False)
+                    self.assertNotIn(query, event["error"]["message"])
+                    if event["error"]["code"] == "live_unavailable":
+                        self.assertIn("Demo mode only contains authored offline examples", event["error"]["message"])
+                terminal = self.assert_terminal(events, "unlisted")
+                self.assertEqual(terminal["status"], "sources_failed")
+                self.assertEqual(terminal["count"], 0)
+                self.assertEqual(terminal["sourceFailures"], len(expected))
+                health = next(event["sources"] for event in events if event["type"] == "health")
+                for source, code in expected:
+                    self.assertEqual(health[source]["requests"], 1 if code == "live_unavailable" else 0)
+                    self.assertEqual(health[source]["successes"], 0)
+                    self.assertEqual(health[source]["retries"], 0)
+                    self.assertEqual(health[source]["noMatches"], 0)
+                    self.assertEqual(health[source]["lastError"], code)
 
     async def test_eof_drains_multiple_outstanding_requests(self):
-        data = match_frame("first") + match_frame("second", "DEMO-002") + match_frame("third", "ABSENT-999")
+        data = match_frame("first") + match_frame("second", "DEMO-002") + match_frame("third", "No Such Fictional Film")
         events, _ = await self.run_worker(data)
         self.assertEqual({event["requestId"] for event in events}, {"first", "second", "third"})
         self.assertEqual(self.assert_terminal(events, "first")["status"], "matched")
@@ -140,7 +210,7 @@ class CliTests(unittest.IsolatedAsyncioTestCase):
             first.extend(self.decode_events(raw))
         self.assert_terminal(first, "first")
         self.assertIsNone(process.returncode)
-        process.stdin.write(match_frame("second", "ABSENT-999"))
+        process.stdin.write(match_frame("second", "No Such Fictional Film"))
         await process.stdin.drain()
         stdout, stderr = await asyncio.wait_for(process.communicate(), 5)
         self.assertEqual(process.returncode, 0, stderr.decode())

@@ -459,6 +459,68 @@ class OfflineReplayContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(adapter.parse_detail(detail.body, TPDB_TARGET).provider_identity, TPDB_TARGET.provider_identity)
         self.assertTrue(search.fixture and detail.fixture)
 
+    async def test_fixture_unlisted_search_and_detail_fail_without_claiming_no_match(self):
+        transport = FixtureTransport()
+        for request in (
+            replace(XCITY_SEARCH, url="https://xcity.jp/result_published/?q=BF658"),
+            replace(TPDB_SEARCH, url="https://api.theporndb.net/movies?q=Unlisted%20Real%20Movie%20Title&per_page=100"),
+            replace(XCITY_DETAIL, url="https://xcity.jp/avod/detail/?id=999999"),
+            replace(TPDB_DETAIL, url="https://api.theporndb.net/movies/unlisted-real-movie"),
+        ):
+            with self.subTest(source=request.source, url=request.url), self.assertRaises(WorkerError) as raised:
+                await transport.fetch(request)
+            self.assertEqual(raised.exception.code, "live_unavailable")
+            self.assertFalse(raised.exception.retryable)
+            self.assertIn("Demo mode only contains authored offline examples", raised.exception.message)
+            self.assertNotIn(request.url, raised.exception.message)
+        self.assertEqual(len(transport.calls), 4)
+
+    async def test_fixture_declared_negatives_and_known_title_fallbacks_remain_authored(self):
+        for query, source in (("ABSENT-999", "xcity"), ("No Such Fictional Film", "xcity"),
+                              ("No Such Fictional Film", "theporndb_movies"),
+                              ("The Last Beacon", "xcity"), ("The Mountain Letters", "xcity")):
+            with self.subTest(query=query, source=source):
+                adapter = XcityAdapter() if source == "xcity" else ThePornDbMoviesAdapter()
+                response = await FixtureTransport().fetch(adapter.search_request(query))
+                self.assertEqual(response.status, 200)
+                self.assertTrue(response.fixture)
+                self.assertEqual(adapter.parse_search(response.body), [])
+
+    async def test_fixture_incomplete_details_do_not_count_as_verified_no_match(self):
+        for code in ("live_unavailable", "schema_drift"):
+            with self.subTest(code=code):
+                transport, events = FixtureTransport(), []
+                if code == "live_unavailable":
+                    body = transport.bodies["xcity-search-001.html"]
+                    self.assertIn(b"id=1001", body)
+                    # Alter only this test's in-memory fixture; no real response
+                    # or permanent fixture is created for the missing detail.
+                    transport.bodies["xcity-search-001.html"] = body.replace(b"id=1001", b"id=999999")
+                else:
+                    transport.bodies["xcity-demo-001.html"] = b"<html>changed schema</html>"
+                worker = Worker(matcher(transport), events.append)
+                with (patch.object(socket.socket, "__new__", side_effect=AssertionError("Unexpected network socket")) as sockets,
+                      patch("socket.create_connection", side_effect=AssertionError("Unexpected network connection")) as connections,
+                      patch("urllib.request.urlopen", side_effect=AssertionError("Unexpected HTTP")) as http):
+                    worker.submit(Command("incomplete-detail", "match", "DEMO-001", ("xcity",)))
+                    await worker.drain()
+                    sockets.assert_not_called()
+                    connections.assert_not_called()
+                    http.assert_not_called()
+                self.assertEqual([event["type"] for event in events], ["error", "health", "completed"])
+                self.assertEqual(events[0]["error"]["code"], code)
+                self.assertIs(events[0]["error"]["retryable"], False)
+                self.assertIs(events[0]["terminal"], False)
+                health = events[1]["sources"]["xcity"]
+                self.assertEqual(health["requests"], 2)
+                self.assertEqual(health["noMatches"], 0)
+                self.assertEqual(health["retries"], 0)
+                self.assertEqual(health["lastError"], code)
+                self.assertEqual(events[2]["status"], "sources_failed")
+                self.assertEqual(events[2]["sourceFailures"], 1)
+                self.assertEqual(events[2]["count"], 0)
+                self.assertIs(events[2]["terminal"], True)
+
     async def test_empty_search_never_fetches_a_detail(self):
         for query, source, request, body in (
             ("DEMO-001", "xcity", XCITY_SEARCH, xcity_search()),
@@ -470,8 +532,14 @@ class OfflineReplayContractTests(unittest.IsolatedAsyncioTestCase):
                 transport.assert_complete()
 
     async def test_catalog_query_never_sends_a_tpdb_request(self):
-        transport = ReplayTransport([])
-        self.assertEqual(await matcher(transport).match("ＤＥＭＯ－００１", ("theporndb_movies",)), [])
+        transport, errors = ReplayTransport([]), []
+        subject = matcher(transport)
+        self.assertEqual(await subject.match("ＤＥＭＯ－００１", ("theporndb_movies",),
+                                            on_error=lambda source, error: errors.append((source, error.code, error.retryable))), [])
+        self.assertEqual(errors, [("theporndb_movies", "unsupported_query", False)])
+        self.assertEqual(subject.scheduler.counters("theporndb_movies").requests, 0)
+        self.assertEqual(subject.scheduler.counters("theporndb_movies").noMatches, 0)
+        self.assertEqual(transport.calls, [])
         transport.assert_complete()
 
     async def test_missing_xcity_year_cannot_be_filled_by_a_tpdb_slug(self):
@@ -639,6 +707,8 @@ class OfflineReplayContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(completed[0]["status"], "sources_failed")
         self.assertEqual(completed[0]["sourceFailures"], 1)
         self.assertFalse(any(event["type"] == "candidate" for event in events))
+        health = next(event["sources"]["theporndb_movies"] for event in events if event["type"] == "health")
+        self.assertEqual(health["noMatches"], 0)
         self.assertEqual(len(transport.calls), 11)
         transport.assert_complete()
 

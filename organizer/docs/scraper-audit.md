@@ -1,5 +1,7 @@
 # Legacy scraper audit and bounded migration scope
 
+Historical implementation/audit record. Later configured-source and portable-delivery changes are documented in [architecture](architecture.md), [validation](validation.md) and [Windows delivery](windows-delivery.md); the scope statements below describe their recorded baseline.
+
 Audit date: 2026-10-14. Baseline: `0188d8559b4d1165048a6a5cc921955b1a44d076`, branch `local/media-organizer-slice`.
 
 This is a source audit of the existing Python implementation, plus a small, isolated control-flow probe. Legacy source files were not changed. File and line references below are repository-relative and refer to that baseline. No live metadata sources, credentials, personal media, or production services were used. This document does not report a throughput benchmark, a full legacy test-suite pass, or live-source compatibility.

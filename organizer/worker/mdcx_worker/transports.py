@@ -40,6 +40,12 @@ TPDB_DETAIL = {
     "the-mountain-letters": "theporndb-detail-the-mountain-letters.json",
     "the-quiet-observatory": "theporndb-detail-the-quiet-observatory.json",
 }
+# These are authored negative examples, not a fallback for arbitrary queries.
+# The two TPDB-only fictional titles retain their explicit xcity no-result step.
+EMPTY_SEARCH_QUERIES = {
+    "xcity": frozenset({"absent999", "nosuchfictionalfilm", "thelastbeacon", "themountainletters"}),
+    "theporndb_movies": frozenset({"nosuchfictionalfilm"}),
+}
 
 
 class FixtureTransport:
@@ -58,13 +64,16 @@ class FixtureTransport:
         await asyncio.sleep(0)
         kind, key = validate_provider_request(request)
         self.calls.append(request)
+        if kind == "search" and canonical(key) in EMPTY_SEARCH_QUERIES[request.source]:
+            body = self.bodies["xcity-search-empty.html"] if request.source == "xcity" else b'{"data":[]}'
+            return Response(200, body, fixture=True)
         if request.source == "xcity":
-            name = (XCITY_SEARCH.get(canonical(key), "xcity-search-empty.html") if kind == "search"
+            name = (XCITY_SEARCH.get(canonical(key)) if kind == "search"
                     else XCITY_DETAIL.get(key))
         else:
             name = TPDB_SEARCH.get(canonical(key)) if kind == "search" else TPDB_DETAIL.get(key)
         if name is None:
-            return Response(200, b'{"data":[]}', fixture=True) if kind == "search" else Response(404, fixture=True)
+            raise WorkerError("live_unavailable", "Demo mode only contains authored offline examples; configure a metadata source for real queries")
         return Response(200, self.bodies[name],
                         {"Content-Type": "text/html" if request.source == "xcity" else "application/json"}, fixture=True)
 

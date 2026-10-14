@@ -1,5 +1,7 @@
 # Approved native workbench integration
 
+Historical implementation/audit record. Later configured-source and portable-delivery changes are documented in [architecture](architecture.md), [validation](validation.md) and [Windows delivery](windows-delivery.md); the scope statements below describe their recorded baseline.
+
 Preserved source baseline: `b9e4309215eed092388611a48963d743783b9955`.
 The 1440×900 refined concept was approved on 2026-10-14. This revision implements that direction with native Avalonia controls, reusable color/type styles, vector icons and locally drawn neutral fixture artwork. It is not a bitmap/web view of the concept.
 
