@@ -110,6 +110,16 @@ class ParseLineTests(unittest.TestCase):
         self.assert_error(request_bytes(command="cancel"))
         self.assert_error(b'{"version":1,"requestId":"req-1","command":"cancel","sources":["xcity"]}')
 
+    def test_credentials_transport_urls_and_fixture_paths_are_never_jsonl_inputs(self):
+        for field in ("credential", "credentials", "token", "apiToken", "authorization", "headers", "url", "fixturePath", "fixtureRoot"):
+            with self.subTest(field=field):
+                self.assert_error(request_bytes(**{field: "inert-test-value"}))
+
+    def test_lone_surrogates_are_rejected_before_url_encoding(self):
+        for query in ("\ud800", "Title\udfff"):
+            with self.subTest(query=repr(query)):
+                self.assert_error(request_bytes(query=query))
+
     def test_line_size_boundary_and_oversized_frame(self):
         raw = request_bytes()
         at_limit = raw + b" " * (MAX_LINE_BYTES - len(raw))

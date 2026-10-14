@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "slug": "the-last-beacon-2022",
+      "title": "The Last Beacon",
+      "date": "2022-06-11",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    },
+    {
+      "slug": "the-last-beacon-2025",
+      "title": "The Last Beacon",
+      "date": "2025-06-11",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    }
+  ]
+}

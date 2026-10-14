@@ -1,0 +1,15 @@
+{
+  "data": [
+    {
+      "slug": "the-lantern-map",
+      "title": "The Lantern Map",
+      "date": "2024-03-09",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    }
+  ]
+}

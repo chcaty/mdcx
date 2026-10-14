@@ -1,1 +1,70 @@
-{"data":[{"slug":"DEMO-001","title":"The Lantern Map","date":"2024-03-09"},{"slug":"DEMO-002","title":"Harbor of Stars","date":"2023-11-04"},{"slug":"DEMO-003","title":"The Last Beacon","date":"2022-06-11"},{"slug":"DEMO-004","title":"The Last Beacon","date":"2025-06-11"},{"slug":"DEMO-005","title":"The Mountain Letters","date":"2025-01-10"},{"slug":"DEMO-006","title":"The Quiet Observatory","date":"2021-08-17"}]}
+{
+  "data": [
+    {
+      "slug": "the-lantern-map",
+      "title": "The Lantern Map",
+      "date": "2024-03-09",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    },
+    {
+      "slug": "harbor-of-stars",
+      "title": "Harbor of Stars",
+      "date": "2023-11-04",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    },
+    {
+      "slug": "the-last-beacon-2022",
+      "title": "The Last Beacon",
+      "date": "2022-06-11",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    },
+    {
+      "slug": "the-last-beacon-2025",
+      "title": "The Last Beacon",
+      "date": "2025-06-11",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    },
+    {
+      "slug": "the-mountain-letters",
+      "title": "The Mountain Letters",
+      "date": "2025-01-10",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    },
+    {
+      "slug": "the-quiet-observatory",
+      "title": "The Quiet Observatory",
+      "date": "2021-08-17",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    }
+  ]
+}

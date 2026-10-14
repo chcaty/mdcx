@@ -14,9 +14,14 @@ public sealed record ScanResult(string Root, IReadOnlyList<MediaAsset> Assets, I
 {
     public bool IsComplete { get; init; } = true;
 }
+public sealed record CatalogIdentifier(string Namespace, string Value);
+
+// Id is a display/review identifier, never an unqualified cross-provider identity.
 public sealed record MetadataCandidate(string Id, string Title, int? Year, string Source, string SourceUrl,
     double Confidence, IReadOnlyDictionary<string, string> Provenance)
 {
+    public string SourceId { get; init; } = "";
+    public CatalogIdentifier? CatalogIdentifier { get; init; }
     public bool RequiresReview { get; init; } = true;
     public IReadOnlyList<string> ReviewReasons { get; init; } = [];
 }

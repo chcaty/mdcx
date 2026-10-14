@@ -1,0 +1,15 @@
+{
+  "data": [
+    {
+      "slug": "harbor-of-stars",
+      "title": "Harbor of Stars",
+      "date": "2023-11-04",
+      "site": {
+        "name": "Fictional Studio",
+        "short_name": "FS",
+        "url": "https://studio.example.invalid"
+      },
+      "performers": []
+    }
+  ]
+}

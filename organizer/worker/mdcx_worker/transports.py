@@ -1,48 +1,98 @@
-"""Transport seam: the shipped worker has NO live network transport.
-
-A future HTTPS implementation must enforce the documented safety contract and
-be explicitly injected through AccessControlledTransport. Nothing imports legacy
-sessions, credentials, cookies, browser automation, or proxy configuration.
-"""
+"""Only deterministic mocked HTTP replay is shipped; no socket implementation."""
 from __future__ import annotations
 
 import asyncio
 import ipaddress
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
+from .contracts import validate_provider_request
 from .models import MAX_BODY_BYTES, Request, Response, Transport, WorkerError, canonical
+
+# All paths are code-reviewed constants, never obtained from JSONL, a URL or query.
+FIXTURE_FILES = (
+    "xcity-search-001.html", "xcity-search-002.html", "xcity-search-005.html", "xcity-search-006.html",
+    "xcity-search-empty.html", "xcity-demo-001.html", "xcity-demo-002.html", "xcity-demo-006.html",
+    "xcity-conflicting-id.html", "theporndb-movies.json",
+    "theporndb-search-lantern.json", "theporndb-search-harbor.json", "theporndb-search-beacon.json",
+    "theporndb-search-mountain.json", "theporndb-search-observatory.json",
+    "theporndb-detail-the-lantern-map.json", "theporndb-detail-harbor-of-stars.json",
+    "theporndb-detail-the-last-beacon-2022.json", "theporndb-detail-the-last-beacon-2025.json",
+    "theporndb-detail-the-mountain-letters.json", "theporndb-detail-the-quiet-observatory.json",
+)
+XCITY_SEARCH = {
+    "demo001": "xcity-search-001.html", "thelanternmap": "xcity-search-001.html",
+    "demo002": "xcity-search-002.html", "harborofstars": "xcity-search-002.html",
+    "demo005": "xcity-search-005.html", "demo006": "xcity-search-006.html",
+    "thequietobservatory": "xcity-search-006.html",
+}
+XCITY_DETAIL = {"1001": "xcity-demo-001.html", "1002": "xcity-demo-002.html",
+                "1005": "xcity-conflicting-id.html", "1006": "xcity-demo-006.html"}
+TPDB_SEARCH = {"thelanternmap": "theporndb-search-lantern.json", "harborofstars": "theporndb-search-harbor.json",
+               "thelastbeacon": "theporndb-search-beacon.json", "themountainletters": "theporndb-search-mountain.json",
+               "thequietobservatory": "theporndb-search-observatory.json"}
+TPDB_DETAIL = {
+    "the-lantern-map": "theporndb-detail-the-lantern-map.json",
+    "harbor-of-stars": "theporndb-detail-harbor-of-stars.json",
+    "the-last-beacon-2022": "theporndb-detail-the-last-beacon-2022.json",
+    "the-last-beacon-2025": "theporndb-detail-the-last-beacon-2025.json",
+    "the-mountain-letters": "theporndb-detail-the-mountain-letters.json",
+    "the-quiet-observatory": "theporndb-detail-the-quiet-observatory.json",
+}
 
 
 class FixtureTransport:
-    def __init__(self, root: Path | None = None):
-        root = root or Path(__file__).resolve().parent.parent / "fixtures"
-        # Fixed files, bounded eagerly, no query-controlled paths or file reads.
+    def __init__(self):
+        root = Path(__file__).resolve().parent.parent / "fixtures"
         self.bodies = {}
-        for source, name in {"xcity": "xcity-demo-001.html", "xcity_missing_date": "xcity-demo-006.html", "xcity_conflict": "xcity-conflicting-id.html", "theporndb_movies": "theporndb-movies.json"}.items():
+        self.calls: list[Request] = []
+        for name in FIXTURE_FILES:
             with (root / name).open("rb") as stream:
                 body = stream.read(MAX_BODY_BYTES + 1)
             if len(body) > MAX_BODY_BYTES:
                 raise WorkerError("response_too_large", "Fixture exceeds body limit")
-            self.bodies[source] = body
+            self.bodies[name] = body
 
     async def fetch(self, request: Request) -> Response:
-        await asyncio.sleep(0)  # A real cancellation point, also in deterministic replay.
-        url = urlsplit(request.url)
-        expected_host = {"xcity": "xcity.example.invalid", "theporndb_movies": "theporndb.example.invalid"}.get(request.source)
-        if url.hostname != expected_host or url.scheme != "https":
-            raise WorkerError("policy_blocked", "Fixture route is not allowed")
-        query = canonical(parse_qs(url.query).get("q", [""])[0])
-        if request.source == "xcity" and query in {"demo006", "thequietobservatory"}:
-            return Response(200, self.bodies["xcity_missing_date"], fixture=True)
-        if request.source == "xcity" and query == "demo005":
-            return Response(200, self.bodies["xcity_conflict"], fixture=True)
-        if request.source == "xcity" and query not in {"demo001", "thelanternmap"}:
-            return Response(404, fixture=True)
-        if request.source == "theporndb_movies" and query not in {"demo001", "demo002", "demo003", "demo004", "demo005", "demo006", "thelanternmap", "harborofstars", "thelastbeacon", "thequietobservatory"}:
-            return Response(200, b'{"data":[]}', fixture=True)
-        return Response(200, self.bodies[request.source], {"Content-Type": "text/html" if request.source == "xcity" else "application/json"}, fixture=True)
+        await asyncio.sleep(0)
+        kind, key = validate_provider_request(request)
+        self.calls.append(request)
+        if request.source == "xcity":
+            name = (XCITY_SEARCH.get(canonical(key), "xcity-search-empty.html") if kind == "search"
+                    else XCITY_DETAIL.get(key))
+        else:
+            name = TPDB_SEARCH.get(canonical(key)) if kind == "search" else TPDB_DETAIL.get(key)
+        if name is None:
+            return Response(200, b'{"data":[]}', fixture=True) if kind == "search" else Response(404, fixture=True)
+        return Response(200, self.bodies[name],
+                        {"Content-Type": "text/html" if request.source == "xcity" else "application/json"}, fixture=True)
+
+
+class ReplayTransport:
+    """Strict ordered request/response script; unexpected calls fail closed.
+
+    Exact source, method, URL, headers and credential reference must match.
+    Responses remain authored test data; this class has no HTTP fallback.
+    """
+    def __init__(self, expected: list[tuple[Request, Response]]):
+        self.expected = list(expected)
+        self.calls: list[Request] = []
+        self.position = 0
+
+    async def fetch(self, request: Request) -> Response:
+        await asyncio.sleep(0)
+        validate_provider_request(request)
+        if self.position >= len(self.expected) or request != self.expected[self.position][0]:
+            raise WorkerError("replay_mismatch", "Request does not match the next offline replay expectation")
+        self.calls.append(request)
+        response = self.expected[self.position][1]
+        self.position += 1
+        return response
+
+    def assert_complete(self):
+        if self.position != len(self.expected):
+            raise AssertionError("Offline replay has unconsumed expected requests")
 
 
 class AccessControlledTransport:

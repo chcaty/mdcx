@@ -7,7 +7,7 @@ A new native **Avalonia + .NET 10** media-file workbench, kept separate from the
 - Choose a source directory and scan recursively without following symbolic links/reparse points.
 - Keep each video/version as a separate asset. Recognize common catalog IDs, attach unambiguous named subtitles/sidecars, and surface missing/ambiguous identifiers. Equal IDs are not treated as proof of duplicate content.
 - Dense native workbench: source/status panel, virtualized file grid, metadata/candidate/plan inspector, task log; filtering, keyboard shortcuts, cancellation and stale-result protection.
-- Run the isolated Python worker against neutral archived HTML/JSON fixtures; inspect evidence, provenance, ambiguity and source fallback. Every candidate needs a human click to accept. Manual correction is supported.
+- Run the isolated Python worker against hand-authored, structure-inspired neutral HTML/JSON fixtures; inspect evidence, provenance, ambiguity and source fallback. Every candidate in normal interactive mode needs a human click to accept. Manual correction is supported.
 - Persist the scan index, reviewed metadata and dry-run plans in a versioned application-owned SQLite database. Changed source fingerprints invalidate old reviews. Repeated plans are idempotent by content ID.
 - Preview deterministic target filenames and preserved subtitle language suffixes; block collisions, existing targets, unsafe ancestors, traversal, links, changed source files, duplicate selections, reserved-name/path-limit problems.
 
@@ -57,4 +57,4 @@ A safe preview is a point-in-time check, not authorization or proof that a futur
 - Automatic acceptance, confidence calibration, embedding/AI matching, background unattended processing
 - Packaged installers, signing, auto-update, Windows/macOS runtime verification, large-library performance claims
 
-The current source parsers demonstrate a migrated subset, not a completed scraper replacement. Exact identity and field-provenance checks matter more than HTTP success. Test results describe frozen fictional fixtures; they do not establish live-site accuracy or coverage.
+The current source parsers demonstrate a migrated subset and historical search/detail contracts under strict offline request replay, not a completed scraper replacement. Provider-internal IDs are separate from namespaced catalog identifiers; a ThePornDB slug is never treated as an xcity catalog number. Request routes are checked without opening sockets, and current live schema/availability remain unverified. Exact identity and field-provenance checks matter more than HTTP success. Test results describe frozen fictional fixtures; they do not establish live-site accuracy or coverage.

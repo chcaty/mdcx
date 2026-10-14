@@ -6,9 +6,9 @@ Verified 2026-10-14 UTC on **Debian GNU/Linux 13, x86-64**, with Microsoft .NET 
 
 - Locked NuGet restore for all four projects
 - Complete Release solution build: **0 warnings, 0 errors**, warnings-as-errors and current SDK analyzers enabled
-- Core/infrastructure executable checks: **31/31 passed**
+- Core/infrastructure executable checks: **32/32 passed**
 - Desktop MVVM interaction smoke: **24/24 checks passed**
-- Python parser/scheduler/protocol/quality tests: **87/87 passed**
+- Python parser/scheduler/protocol/quality tests: **138/138 passed**
 - Python `compileall`
 - Ruff check for the new worker
 - .NET folder-mode whitespace verification, and Git whitespace check
@@ -24,7 +24,20 @@ Core checks cover Unicode/NFKC identifier parsing, ambiguous IDs, directory recu
 
 Desktop checks cover the scan→match→explicit review→preview workflow, filtering, candidate provenance/manual locks, no mutation, review persistence, stale index rejection, repeated actions, cancellation/restart, late results, source/selection changes and failure-to-idle recovery. They test the ViewModel workflow; rendered screenshots separately exercise the real XAML layout.
 
-Worker tests cover frozen HTML/JSON parsing, exact-ID negative cases, edition/leading-zero handling, ambiguous title candidates, valid field preservation, exact-ID missing-year fallback, field provenance, lazy priority, no sockets, global/per-host high-water marks, retry classification, Retry-After/cooldown/admission, cancellation, body bounds, protocol limits, duplicate IDs, malformed follow-ups and clean process streaming/EOF. See worker README for precise coverage boundary.
+Worker tests cover authored HTML/JSON parsing, strict search→detail request replay, separate provider/catalog/display identities, exact-ID negative cases, edition/leading-zero handling, ambiguous title candidates, valid field preservation, generic missing-year fallback only with explicit shared catalog evidence, field provenance, lazy priority, no sockets, global/per-host high-water marks, retry classification, Retry-After/cooldown/admission, cancellation, body bounds, protocol limits, duplicate IDs, malformed follow-ups and clean process streaming/EOF. The two shipped adapters have no established cross-provider catalog mapping, so they do not enrich one another. See worker README for precise coverage boundary.
+
+## Offline contract correction after the delivered baseline
+
+The delivered `e289bc8` baseline remains in local history. Its recorded checks were 31 Core, 24 UI and 87 Python tests. The correction adds an independent review and full rerun with the counts above; no Desktop or legacy source files changed. Existing screenshots show the unchanged baseline interface, whose visual redesign is a separate task.
+
+- xcity now replays a separate result-list request and numeric-ID detail request; its catalog field is namespaced `xcity:hinban`
+- ThePornDB now replays a search `data[]` and selected-slug detail `data{}`; its slug cannot become a catalog identifier or join another provider by resemblance
+- Literal request expectations verify GET, complete URL/query encoding, headers and inert credential-reference shape independently of adapter builders
+- Tests block socket construction, connection helpers and `urlopen`, then assert zero calls for fixture and replay matching; no external provider request is made
+- Wrong route/detail identity, duplicate required DOM fields, mixed valid/broken results, access denial, the ten-detail cap and detail-stage cancellation have regression coverage
+- The C# boundary requires identity schema 2 and rejects inconsistent source IDs, catalog/display identity, URL routes and missing review requirements
+
+All provider bodies are hand-authored neutral synthetic fixtures, not captured or sanitized real responses. These tests validate a historical contract subset derived from repository code, not current live-site accuracy. xcity's numeric record identity is response-route-bound unless an optional canonical link supplies additional evidence. See `offline-contract-correction.md`.
 
 ## Review-driven regressions fixed
 

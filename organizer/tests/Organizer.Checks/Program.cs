@@ -169,7 +169,7 @@ Test("future SQLite schema rejected without destructive migration", () =>
 string Worker(string name, string body) => FileAt(Dir("fake-workers"), name + ".py", "import sys,json,time\nr=json.loads(sys.stdin.readline())\n" + body);
 AsyncTest("bridge drains noisy stderr and ignores stale events", async () =>
 {
-    var script = Worker("good", "sys.stderr.write('diagnostic'*50000);sys.stderr.flush()\nprint(json.dumps({'version':1,'requestId':'old','type':'candidate','candidate':{}}),flush=True)\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'candidate','candidate':{'id':'DEMO-001','title':'Safe fixture','year':2024,'source':'test','sourceUrl':'https://fixture.invalid','confidence':1.0,'provenance':{'fixture':'true'}}}),flush=True)\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'completed'}),flush=True)\ntime.sleep(30)\n");
+    var script = Worker("good", "sys.stderr.write('diagnostic'*50000);sys.stderr.flush()\nprint(json.dumps({'version':1,'requestId':'old','type':'candidate','candidate':{}}),flush=True)\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'candidate','candidate':{'id':'DEMO-001','title':'Safe fixture','year':2024,'source':'xcity','sourceId':'1001','catalogIdentifier':{'namespace':'xcity:hinban','value':'DEMO-001'},'sourceUrl':'https://xcity.jp/avod/detail/?id=1001','confidence':1.0,'provenance':{'fixture':'true','identitySchema':'2'}}}),flush=True)\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'completed'}),flush=True)\ntime.sleep(30)\n");
     var result = await new PythonScraperClient(python, script).MatchAsync("DEMO-001"); Assert(result.Count == 1 && result[0].Id == "DEMO-001");
 });
 AsyncTest("bridge malformed or oversized output bounded", async () =>
@@ -194,13 +194,14 @@ AsyncTest("bridge caller cancellation preserved", async () =>
 });
 if (args.Length > 0)
 {
-    AsyncTest("real fixture worker end-to-end", async () =>
+    AsyncTest("offline provider-contract worker end-to-end", async () =>
     {
         var result = await new PythonScraperClient(python, args[0]).MatchAsync("DEMO-001");
         Assert(result.Any(c => c.Id == "DEMO-001" && c.Title.Length > 0));
-        var fallback = await new PythonScraperClient(python, args[0]).MatchAsync("DEMO-005");
-        Assert(fallback.Any(c => c.Id == "DEMO-005"));
-        var ambiguous = await new PythonScraperClient(python, args[0]).MatchAsync("The Last Beacon");
+        Assert(result[0].SourceId == "1001" && result[0].CatalogIdentifier is { Namespace: "xcity:hinban", Value: "DEMO-001" });
+        var tpdb = await new PythonScraperClient(python, args[0]).MatchAsync("Harbor of Stars", sources: ["theporndb_movies"]);
+        Assert(tpdb.Any(c => c.Source == "theporndb_movies" && c.Id == "theporndb_movies:harbor-of-stars" && c.SourceId == "harbor-of-stars" && c.CatalogIdentifier is null && c.RequiresReview));
+        var ambiguous = await new PythonScraperClient(python, args[0]).MatchAsync("The Last Beacon", sources: ["theporndb_movies"]);
         Assert(ambiguous.Count == 2 && ambiguous.All(c => c.RequiresReview && c.ReviewReasons.Count > 0));
         Assert(result.All(c => c.Provenance.TryGetValue("fixture", out var fixture) && fixture == "true"));
     });
@@ -266,6 +267,40 @@ AsyncTest("bridge rejects structurally incomplete candidate", async () =>
     var script = Worker("incomplete-candidate", "print(json.dumps({'version':1,'requestId':r['requestId'],'type':'candidate','candidate':{'id':'DEMO-001','title':'Fixture','confidence':1.0}}),flush=True)\n");
     try { await new PythonScraperClient(python, script).MatchAsync("DEMO-001"); throw new Exception("Expected invalid candidate rejection"); }
     catch (ScraperException e) { Assert(e.Code == "invalid_candidate"); }
+});
+AsyncTest("bridge keeps provider IDs separate from catalog identity", async () =>
+{
+    async Task Reject(object candidate)
+    {
+        var body = System.Text.Json.JsonSerializer.Serialize(candidate);
+        var script = Worker("identity-" + Guid.NewGuid().ToString("N"), "c=json.loads(" + System.Text.Json.JsonSerializer.Serialize(body) + ")\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'candidate','candidate':c}),flush=True)\n");
+        try { await new PythonScraperClient(python, script).MatchAsync("DEMO-001"); throw new Exception("Expected identity rejection"); }
+        catch (ScraperException e) { Assert(e.Code == "invalid_identity", e.Code); }
+    }
+    var candidate = new MetadataCandidate("theporndb_movies:demo-001", "Neutral", 2024, "theporndb_movies", "https://api.theporndb.net/movies/demo-001", 0.8, new Dictionary<string, string> { ["fixture"] = "true", ["identitySchema"] = "2" })
+    { SourceId = "demo-001", RequiresReview = true, ReviewReasons = ["missing_catalog_identifier"] };
+    await Reject(candidate with { Provenance = new Dictionary<string, string> { ["fixture"] = "true" } });
+    await Reject(candidate with { Id = "DEMO-001" });
+    await Reject(candidate with { CatalogIdentifier = new("xcity:hinban", "DEMO-001") });
+    await Reject(candidate with { SourceUrl = "https://example.invalid/movies/demo-001" });
+    await Reject(candidate with { SourceUrl = candidate.SourceUrl + "?token=not-a-real-token" });
+    await Reject(candidate with { SourceUrl = candidate.SourceUrl + "#fragment" });
+    await Reject(candidate with { SourceUrl = "https://api.theporndb.net:444/movies/demo-001" });
+    await Reject(candidate with { RequiresReview = false });
+    await Reject(candidate with { SourceId = "../demo-001" });
+    var xcity = candidate with { Id = "DEMO-001", Source = "xcity", SourceId = "1001", CatalogIdentifier = new("xcity:hinban", "DEMO-001"), SourceUrl = "https://xcity.jp/avod/detail/?id=1001" };
+    await Reject(xcity with { CatalogIdentifier = new("other:catalog", "DEMO-001") });
+    await Reject(xcity with { SourceId = "1002" });
+    await Reject(xcity with { Id = "DEMO-002" });
+    foreach (var badId in new[] { "0", "01001" })
+        await Reject(xcity with { SourceId = badId, SourceUrl = $"https://xcity.jp/avod/detail/?id={badId}" });
+    foreach (var badSlug in new[] { ".abc", "-abc", "_abc", "a..b" })
+        await Reject(candidate with { SourceId = badSlug, Id = $"theporndb_movies:{badSlug}", SourceUrl = $"https://api.theporndb.net/movies/{badSlug}" });
+    var longSlug = new string('a', 128);
+    var valid = candidate with { SourceId = longSlug, Id = $"theporndb_movies:{longSlug}", SourceUrl = $"https://api.theporndb.net/movies/{longSlug}" };
+    var body = System.Text.Json.JsonSerializer.Serialize(valid);
+    var script = Worker("long-valid-identity", "c=json.loads(" + System.Text.Json.JsonSerializer.Serialize(body) + ")\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'candidate','candidate':c}),flush=True)\nprint(json.dumps({'version':1,'requestId':r['requestId'],'type':'completed'}),flush=True)\n");
+    Assert((await new PythonScraperClient(python, script).MatchAsync("A title")).Single().SourceId == longSlug);
 });
 var failures = 0;
 try

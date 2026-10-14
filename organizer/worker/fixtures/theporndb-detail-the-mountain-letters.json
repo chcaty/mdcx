@@ -1,0 +1,13 @@
+{
+  "data": {
+    "slug": "the-mountain-letters",
+    "title": "The Mountain Letters",
+    "date": "2025-01-10",
+    "site": {
+      "name": "Fictional Studio",
+      "short_name": "FS",
+      "url": "https://studio.example.invalid"
+    },
+    "performers": []
+  }
+}

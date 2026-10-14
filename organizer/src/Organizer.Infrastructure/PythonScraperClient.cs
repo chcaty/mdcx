@@ -15,10 +15,13 @@ public sealed class PythonScraperClient(string pythonExecutable, string workerSc
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(25);
-    public async Task<IReadOnlyList<MetadataCandidate>> MatchAsync(string query, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<MetadataCandidate>> MatchAsync(string query, CancellationToken cancellationToken = default, IReadOnlyList<string>? sources = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         if (query.Length > 256) throw new ArgumentException("Query must be at most 256 characters.", nameof(query));
+        if (sources is not null && (sources.Count is < 1 or > 2 || sources.Distinct(StringComparer.Ordinal).Count() != sources.Count ||
+            sources.Any(source => source is not "xcity" and not "theporndb_movies")))
+            throw new ArgumentException("Sources must be unique supported adapter names.", nameof(sources));
         var script = Path.GetFullPath(workerScript);
         if (!File.Exists(script)) throw new FileNotFoundException("Python scraper worker was not found.", script);
         var requestId = Guid.NewGuid().ToString("N");
@@ -50,7 +53,9 @@ public sealed class PythonScraperClient(string pythonExecutable, string workerSc
         var candidates = new List<MetadataCandidate>();
         try
         {
-            await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { version = 1, requestId, command = "match", query }).AsMemory(), token).ConfigureAwait(false);
+            var command = new Dictionary<string, object> { ["version"] = 1, ["requestId"] = requestId, ["command"] = "match", ["query"] = query };
+            if (sources is not null) command["sources"] = sources;
+            await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(command).AsMemory(), token).ConfigureAwait(false);
             await process.StandardInput.FlushAsync(token).ConfigureAwait(false);
             var terminal = false;
             var eventCount = 0;
@@ -66,7 +71,7 @@ public sealed class PythonScraperClient(string pythonExecutable, string workerSc
                 {
                     if (candidates.Count >= 64) throw new ScraperException("protocol_limit", "Too many candidates.");
                     var candidate = e.GetProperty("candidate").Deserialize<MetadataCandidate>(JsonOptions) ?? throw new ScraperException("invalid_candidate", "Missing candidate.");
-                    if (string.IsNullOrWhiteSpace(candidate.Id) || candidate.Id.Length > 128 ||
+                    if (string.IsNullOrWhiteSpace(candidate.Id) || candidate.Id.Length > 256 ||
                         string.IsNullOrWhiteSpace(candidate.Title) || candidate.Title.Length > 1000 ||
                         string.IsNullOrWhiteSpace(candidate.Source) || candidate.Source.Length > 128 ||
                         !Uri.TryCreate(candidate.SourceUrl, UriKind.Absolute, out var sourceUrl) || sourceUrl.Scheme != "https" || !string.IsNullOrEmpty(sourceUrl.UserInfo) ||
@@ -76,6 +81,8 @@ public sealed class PythonScraperClient(string pythonExecutable, string workerSc
                         candidate.Year is < 1888 or > 2100 ||
                         !double.IsFinite(candidate.Confidence) || candidate.Confidence is < 0 or > 1)
                         throw new ScraperException("invalid_candidate", "Worker candidate failed validation.");
+                    if (!HasValidIdentity(candidate))
+                        throw new ScraperException("invalid_identity", "Worker candidate requires identity schema 2 with consistent provider, catalog and display identities.");
                     candidates.Add(candidate);
                 }
                 else if (kind == "completed")
@@ -114,6 +121,34 @@ public sealed class PythonScraperClient(string pythonExecutable, string workerSc
             try { await stderr.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
             catch (Exception e) when (e is OperationCanceledException or TimeoutException or IOException or ObjectDisposedException) { }
         }
+    }
+
+    private static bool HasValidIdentity(MetadataCandidate candidate)
+    {
+        if (!candidate.Provenance.TryGetValue("identitySchema", out var identitySchema) || identitySchema != "2") return false;
+        if (string.IsNullOrWhiteSpace(candidate.SourceId) || candidate.SourceId.Length > 128 || candidate.SourceId.Any(char.IsControl)) return false;
+        if (candidate.CatalogIdentifier is { } catalog &&
+            (string.IsNullOrWhiteSpace(catalog.Namespace) || catalog.Namespace.Length > 64 || catalog.Namespace.Any(char.IsControl) ||
+             string.IsNullOrWhiteSpace(catalog.Value) || catalog.Value.Length > 128 || catalog.Value.Any(char.IsControl))) return false;
+        // This release supports these exact historical routes only. These URL strings
+        // are identifiers in offline replay; this client never fetches them.
+        if (candidate.Source == "xcity")
+        {
+            return candidate.SourceId.Length <= 12 && candidate.SourceId[0] is >= '1' and <= '9' && candidate.SourceId.All(char.IsAsciiDigit) &&
+                candidate.CatalogIdentifier is { Namespace: "xcity:hinban" } identity &&
+                candidate.Id == identity.Value &&
+                candidate.SourceUrl == $"https://xcity.jp/avod/detail/?id={candidate.SourceId}";
+        }
+        if (candidate.Source == "theporndb_movies")
+        {
+            return candidate.CatalogIdentifier is null && char.IsAsciiLetterOrDigit(candidate.SourceId[0]) &&
+                !candidate.SourceId.Contains("..", StringComparison.Ordinal) &&
+                candidate.SourceId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.') &&
+                candidate.Id == $"theporndb_movies:{candidate.SourceId}" &&
+                candidate.SourceUrl == $"https://api.theporndb.net/movies/{Uri.EscapeDataString(candidate.SourceId)}" &&
+                candidate.RequiresReview && candidate.ReviewReasons.Contains("missing_catalog_identifier", StringComparer.Ordinal);
+        }
+        return false;
     }
 
     private static void TryKill(Process process)

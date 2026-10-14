@@ -98,10 +98,12 @@ class CliTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(terminal["sourceFailures"], 0)
 
     async def test_ordered_sources_can_select_second_migrated_adapter_first(self):
-        events, _ = await self.run_worker(match_frame(sources=["theporndb_movies", "xcity"]))
+        events, _ = await self.run_worker(match_frame(query="The Lantern Map", sources=["theporndb_movies", "xcity"]))
         candidates = [event["candidate"] for event in events if event["type"] == "candidate"]
         self.assertEqual(len(candidates), 1)
-        self.assertEqual(candidates[0]["id"], "DEMO-001")
+        self.assertEqual(candidates[0]["id"], "theporndb_movies:the-lantern-map")
+        self.assertEqual(candidates[0]["sourceId"], "the-lantern-map")
+        self.assertIsNone(candidates[0]["catalogIdentifier"])
         self.assertEqual(candidates[0]["source"], "theporndb_movies")
         health = next(event for event in events if event["type"] == "health")
         self.assertEqual(set(health["sources"]), {"theporndb_movies"})

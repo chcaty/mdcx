@@ -1,0 +1,13 @@
+{
+  "data": {
+    "slug": "the-quiet-observatory",
+    "title": "The Quiet Observatory",
+    "date": "2021-08-17",
+    "site": {
+      "name": "Fictional Studio",
+      "short_name": "FS",
+      "url": "https://studio.example.invalid"
+    },
+    "performers": []
+  }
+}

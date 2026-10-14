@@ -61,7 +61,7 @@ def parse_line(raw: bytes) -> Command:
     if command != "match" or set(value) - {"version", "requestId", "command", "query", "sources"}:
         raise WorkerError("invalid_request", "Unsupported command or fields")
     query = value.get("query")
-    if not isinstance(query, str) or not query.strip() or len(query) > 256 or any(unicodedata.category(c) == "Cc" for c in query):
+    if not isinstance(query, str) or not query.strip() or len(query) > 256 or any(unicodedata.category(c) in {"Cc", "Cs"} for c in query):
         raise WorkerError("invalid_request", "query must contain 1–256 printable characters")
     sources = value.get("sources", list(DEFAULT_SOURCES))
     if (not isinstance(sources, list) or not sources or len(sources) > len(DEFAULT_SOURCES)
